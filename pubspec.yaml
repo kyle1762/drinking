@@ -1,0 +1,49 @@
+name: drinking
+description: 治愈奶油风喝水提醒 - 安卓原生交互
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+  flutter: '>=3.10.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # 状态管理
+  provider: ^6.1.2
+
+  # 本地存储
+  shared_preferences: ^2.2.3
+
+  # 通知
+  flutter_local_notifications: ^17.2.1
+
+  # 音频播放(耳机路由)
+  audioplayers: ^6.0.0
+
+  # 图表
+  fl_chart: ^0.68.0
+
+  # 后台定时保活
+  android_alarm_manager_plus: ^4.0.4
+
+  # 时间选择
+  flutter_datetime_picker_plus: ^2.2.0
+
+  # 权限处理
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  # 治愈音效资源(需将 mp3 文件放入 assets/sounds/)
+  assets:
+    - assets/sounds/
