@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../services/feishu_config.dart';
 import '../../theme/app_colors.dart';
@@ -39,7 +40,7 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
             // 重定向地址不存在是正常的(我们拦截它),不视为错误
             // lark:// scheme 报 ERR_UNKNOWN_URL_SCHEME 也不视为错误
             if (e.errorType == WebResourceErrorType.unknown &&
-                (e.description.contains('ERR_UNKNOWN_URL_SCHEME'))) {
+                e.description.contains('ERR_UNKNOWN_URL_SCHEME')) {
               return;
             }
           },
@@ -64,12 +65,12 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
             }
 
             // 2. 拦截飞书自定义 scheme(lark://, feishu://) - 唤起飞书 App 确认
-            // WebView 无法处理这些 scheme,阻止导航避免 ERR_UNKNOWN_URL_SCHEME 报错
-            // 用户需手动到飞书 App 中点击确认,确认后网页会自动跳转到 redirect_uri
+            // WebView 无法处理这些 scheme,需通过 url_launcher 启动外部飞书 App
+            // 用户在飞书 App 确认后,网页会自动跳转到 redirect_uri
             if (url.startsWith('lark://') ||
                 url.startsWith('feishu://') ||
                 url.startsWith('larksuite://')) {
-              setState(() => _waitingFeishuConfirm = true);
+              _launchFeishuApp(url);
               return NavigationDecision.prevent;
             }
 
@@ -78,6 +79,45 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
         ),
       )
       ..loadRequest(Uri.parse(FeishuConfig.buildOAuthUrl()));
+  }
+
+  /// 通过 url_launcher 唤起飞书 App 打开 lark:// URL
+  Future<void> _launchFeishuApp(String url) async {
+    final uri = Uri.parse(url);
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (launched) {
+        setState(() {
+          _waitingFeishuConfirm = true;
+        });
+      } else {
+        // 唤起失败 - 可能未安装飞书 App
+        if (mounted) {
+          setState(() {
+            _waitingFeishuConfirm = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('未检测到飞书 App,请先安装飞书后再登录'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _waitingFeishuConfirm = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('无法打开飞书 App,请确认已安装飞书'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -138,7 +178,7 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
                 ),
               ),
             ),
-          // 扫码后提示用户去飞书 App 确认
+          // 已唤起飞书 App,等待用户确认
           if (_waitingFeishuConfirm)
             Container(
               color: AppColors.cream.withValues(alpha: 0.95),
@@ -148,7 +188,7 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.qr_code_scanner,
+                      const Icon(Icons.phone_android,
                           size: 56, color: AppColors.softBlueDeep),
                       const SizedBox(height: 20),
                       const Text(
@@ -161,7 +201,7 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        '已扫码成功,请打开飞书 App\n点击「确认登录」完成授权',
+                        '已唤起飞书 App,请切换到飞书\n点击「确认登录」完成授权',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: AppColors.textSecondary,
@@ -175,7 +215,7 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
                           setState(() => _waitingFeishuConfirm = false);
                           _controller.reload();
                         },
-                        child: const Text('重新扫码'),
+                        child: const Text('重新加载'),
                       ),
                     ],
                   ),
