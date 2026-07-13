@@ -91,7 +91,7 @@ class _CreamBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = _kTabs;
+    const items = _kTabs;
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.cream,

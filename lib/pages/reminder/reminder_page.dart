@@ -172,21 +172,22 @@ class _OverviewCard extends StatelessWidget {
 class _ReminderModule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return const Column(
       children: [
-        const SectionTitle('定时提醒'),
-        const SizedBox(height: 12),
-        const _LoopReminder(),
+        SectionTitle('定时提醒'),
+        SizedBox(height: 12),
+        _LoopReminder(),
       ],
     );
   }
 }
 
-/// 循环提醒 - 快捷间隔 + 自定义滑块
+/// 循环提醒 - 快捷间隔 + 自定义滑块(含加减5分钟按钮)
 class _LoopReminder extends StatelessWidget {
   const _LoopReminder();
 
-  static const _quick = [30, 60, 90, 120];
+  // 快捷间隔:20分钟、30分钟、50分钟、1小时
+  static const _quick = [20, 30, 50, 60];
 
   @override
   Widget build(BuildContext context) {
@@ -250,29 +251,71 @@ class _LoopReminder extends StatelessWidget {
                 ),
               ],
             ),
-            Slider(
-              min: 30,
-              max: 240,
-              divisions: 42,
-              value: s.loopInterval.toDouble().clamp(30, 240),
-              onChanged: (v) => s.setLoopInterval(v.round()),
-              onChangeEnd: (v) {
-                if (s.reminderEnabled &&
-                    s.notificationGranted &&
-                    !s.reminderPaused) {
-                  AlarmService.scheduleLoop(v.round());
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('间隔已更新为 ${v.round()} 分钟')),
-                );
-              },
+            const SizedBox(height: 10),
+            // 加减5分钟按钮 + 滑块
+            Row(
+              children: [
+                _stepButton(
+                  icon: Icons.remove,
+                  onTap: () => _adjustInterval(s, -5),
+                ),
+                Expanded(
+                  child: Slider(
+                    min: 10,
+                    max: 240,
+                    divisions: 46,
+                    value: s.loopInterval.toDouble().clamp(10, 240),
+                    onChanged: (v) => s.setLoopInterval(v.round()),
+                    onChangeEnd: (v) {
+                      if (s.reminderEnabled &&
+                          s.notificationGranted &&
+                          !s.reminderPaused) {
+                        AlarmService.scheduleLoop(v.round());
+                      }
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('间隔已更新为 ${v.round()} 分钟')),
+                      );
+                    },
+                  ),
+                ),
+                _stepButton(
+                  icon: Icons.add,
+                  onTap: () => _adjustInterval(s, 5),
+                ),
+              ],
             ),
-            const Text('滑动调整 30~240 分钟,后台定时自动生效',
+            const Text('滑动调整 10~240 分钟,或点击 ±5 分钟微调',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
           ],
         ),
       ),
     );
+  }
+
+  /// 加减5分钟微调按钮
+  Widget _stepButton({required IconData icon, required VoidCallback onTap}) {
+    return RippleButton(
+      onTap: onTap,
+      borderRadius: 20,
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: const BoxDecoration(
+          color: AppColors.softBlue,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, size: 18, color: AppColors.softBlueDeep),
+      ),
+    );
+  }
+
+  /// 调整间隔:delta 可正可负,范围 10~240
+  void _adjustInterval(AppState s, int delta) {
+    final newInterval = (s.loopInterval + delta).clamp(10, 240);
+    s.setLoopInterval(newInterval);
+    if (s.reminderEnabled && s.notificationGranted && !s.reminderPaused) {
+      AlarmService.scheduleLoop(newInterval);
+    }
   }
 }
 
