@@ -13,7 +13,8 @@ class FeishuOAuthPage extends StatefulWidget {
   State<FeishuOAuthPage> createState() => _FeishuOAuthPageState();
 }
 
-class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
+class _FeishuOAuthPageState extends State<FeishuOAuthPage>
+    with WidgetsBindingObserver {
   late final WebViewController _controller;
   bool _loading = true;
   bool _error = false;
@@ -23,6 +24,8 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
   @override
   void initState() {
     super.initState();
+    // 监听 App 生命周期 - 从飞书 App 切回时自动清除遮罩并 reload
+    WidgetsBinding.instance.addObserver(this);
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
@@ -33,8 +36,10 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
               _error = false;
             });
           },
-          onPageFinished: (_) {
+          onPageFinished: (url) {
             setState(() => _loading = false);
+            // 页面加载完成后注入 JS:自动切换到账号密码登录,隐藏扫码
+            _switchToPasswordLogin();
           },
           onWebResourceError: (e) {
             // 重定向地址不存在是正常的(我们拦截它),不视为错误
@@ -66,7 +71,7 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
 
             // 2. 拦截飞书自定义 scheme(lark://, feishu://) - 唤起飞书 App 确认
             // WebView 无法处理这些 scheme,需通过 url_launcher 启动外部飞书 App
-            // 用户在飞书 App 确认后,网页会自动跳转到 redirect_uri
+            // 用户在飞书 App 确认后,切回本 App 时生命周期监听会自动 reload
             if (url.startsWith('lark://') ||
                 url.startsWith('feishu://') ||
                 url.startsWith('larksuite://')) {
@@ -79,6 +84,52 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
         ),
       )
       ..loadRequest(Uri.parse(FeishuConfig.buildOAuthUrl()));
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // App 从后台切回前台时(用户从飞书 App 确认后切回)
+    // 自动清除遮罩并 reload WebView,让网页跳转到 redirect_uri 完成授权
+    if (state == AppLifecycleState.resumed && _waitingFeishuConfirm) {
+      setState(() => _waitingFeishuConfirm = false);
+      _controller.reload();
+    }
+  }
+
+  /// 注入 JS:自动切换到账号密码登录 tab,隐藏扫码登录
+  /// 飞书授权页默认显示扫码,通过查找并点击"密码登录"tab 切换
+  void _switchToPasswordLogin() {
+    const js = '''
+(function() {
+  try {
+    // 1. 查找并点击"密码登录"/"账号登录"tab
+    var clickables = document.querySelectorAll('a, button, span, div, li');
+    var keywords = ['密码登录', '账号登录', '账号密码', '密码', '账号'];
+    for (var i = 0; i < clickables.length; i++) {
+      var el = clickables[i];
+      var text = (el.textContent || '').trim();
+      if (text.length > 0 && text.length < 20) {
+        for (var k = 0; k < keywords.length; k++) {
+          if (text === keywords[k] || text.indexOf(keywords[k]) === 0) {
+            el.click();
+            return;
+          }
+        }
+      }
+    }
+    // 2. 备用:通过 class 查找密码登录 tab
+    var tabs = document.querySelectorAll('[class*="password"], [class*="account"], [data-type="password"]');
+    if (tabs.length > 0) { tabs[0].click(); return; }
+  } catch(e) {}
+})();
+''';
+    _controller.runJavaScript(js);
   }
 
   /// 通过 url_launcher 唤起飞书 App 打开 lark:// URL
@@ -201,7 +252,7 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage> {
                       ),
                       const SizedBox(height: 8),
                       const Text(
-                        '已唤起飞书 App,请切换到飞书\n点击「确认登录」完成授权',
+                        '已唤起飞书 App,请切换到飞书\n点击「确认登录」后自动返回',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: AppColors.textSecondary,
