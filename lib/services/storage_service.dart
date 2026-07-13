@@ -23,6 +23,9 @@ class StorageService {
   static const _kAccountState = 'accountState';
   static const _kPhone = 'phone';
   static const _kFeishuName = 'feishuName';
+  static const _kFeishuAppId = 'feishuAppId';
+  static const _kFeishuAppSecret = 'feishuAppSecret';
+  static const _kFeishuOpenId = 'feishuOpenId';
   static const _kProfile = 'profile';
   static const _kNotificationGranted = 'notificationGranted';
   static const _kReminderEnabled = 'reminderEnabled';
@@ -52,6 +55,9 @@ class StorageService {
       accountStateIndex: p.getInt(_kAccountState) ?? 0,
       phone: p.getString(_kPhone) ?? '',
       feishuName: p.getString(_kFeishuName) ?? '',
+      feishuAppId: p.getString(_kFeishuAppId) ?? '',
+      feishuAppSecret: p.getString(_kFeishuAppSecret) ?? '',
+      feishuOpenId: p.getString(_kFeishuOpenId) ?? '',
       profile: _loadProfile(),
       notificationGranted: p.getBool(_kNotificationGranted) ?? false,
       reminderEnabled: p.getBool(_kReminderEnabled) ?? true,
@@ -115,6 +121,9 @@ class StorageService {
   static Future<void> saveAccountState(int index) => _p.setInt(_kAccountState, index);
   static Future<void> savePhone(String v) => _p.setString(_kPhone, v);
   static Future<void> saveFeishuName(String v) => _p.setString(_kFeishuName, v);
+  static Future<void> saveFeishuAppId(String v) => _p.setString(_kFeishuAppId, v);
+  static Future<void> saveFeishuAppSecret(String v) => _p.setString(_kFeishuAppSecret, v);
+  static Future<void> saveFeishuOpenId(String v) => _p.setString(_kFeishuOpenId, v);
   static Future<void> saveProfile(UserProfile p) =>
       _p.setString(_kProfile, jsonEncode(p.toJson()));
   static Future<void> saveNotificationGranted(bool v) =>
@@ -155,7 +164,7 @@ class StorageService {
   /// 清空所有持久化数据(退出登录且不保留本地数据时调用)
   static Future<void> clearAll() async {
     final keys = [
-      _kAccountState, _kPhone, _kFeishuName, _kProfile,
+      _kAccountState, _kPhone, _kFeishuName, _kFeishuAppId, _kFeishuAppSecret, _kFeishuOpenId, _kProfile,
       _kNotificationGranted, _kReminderEnabled, _kIsLoopTab, _kLoopInterval,
       _kSingleReminders, _kRangeStart, _kRangeEnd, _kRepeat,
       _kEarphoneEnabled, _kSound, _kEarphoneVolume,
@@ -173,6 +182,9 @@ class StoredData {
   final int accountStateIndex;
   final String phone;
   final String feishuName;
+  final String feishuAppId;
+  final String feishuAppSecret;
+  final String feishuOpenId;
   final UserProfile profile;
   final bool notificationGranted;
   final bool reminderEnabled;
@@ -198,6 +210,9 @@ class StoredData {
     required this.accountStateIndex,
     required this.phone,
     required this.feishuName,
+    required this.feishuAppId,
+    required this.feishuAppSecret,
+    required this.feishuOpenId,
     required this.profile,
     required this.notificationGranted,
     required this.reminderEnabled,

@@ -4,24 +4,23 @@ import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
 import '../../dialogs.dart';
+import '../../services/feishu_config.dart';
+import 'feishu_oauth_page.dart';
 
 class AccountPage extends StatelessWidget {
   const AccountPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
     return Scaffold(
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.only(bottom: 120),
           children: [
             const _IllustrationHeader(),
-            _LoginModule(),
+            const _WelcomeCard(),
             _FeishuBindCard(),
             _ProfileModule(),
-            const _CloudSyncInfo(),
-            if (s.isLoggedIn) const _LogoutButton(),
           ],
         ),
       ),
@@ -82,11 +81,11 @@ class _IllustrationHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-                // 电脑
+                // 手机
                 const Positioned(
                   right: 50,
                   bottom: 0,
-                  child: Icon(Icons.dvr_outlined,
+                  child: Icon(Icons.phone_iphone,
                       size: 44, color: AppColors.feishu),
                 ),
               ],
@@ -130,128 +129,60 @@ class _CloudIconPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-/// 登录模块
-class _LoginModule extends StatelessWidget {
+/// 欢迎卡片 - 纯展示,无登录流程
+class _WelcomeCard extends StatelessWidget {
+  const _WelcomeCard();
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    if (s.isLoggedIn) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: CreamCard(
-          color: AppColors.softBlue,
-          child: Row(
-            children: [
-              const CircleAvatar(
-                backgroundColor: Colors.white,
-                child: Icon(Icons.person, color: AppColors.softBlueDeep),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                        s.profile.nickname.isEmpty
-                            ? '喝水小达人'
-                            : s.profile.nickname,
-                        style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700)),
-                    Text('已登录 ${s.phone}',
-                        style: const TextStyle(
-                            color: AppColors.textSecondary, fontSize: 12)),
-                  ],
-                ),
-              ),
-              const Icon(Icons.cloud_done_outlined,
-                  color: AppColors.softBlueDeep),
-            ],
-          ),
-        ),
-      );
-    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: CreamCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        color: AppColors.softBlue,
+        child: Row(
           children: [
-            const Text('登录解锁全功能',
-                style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            const Text('登录后定时、记录、徽章云端同步',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-            const SizedBox(height: 16),
-            RippleButton(
-              onTap: () => _login(context, s),
-              borderRadius: AppThemeRadius.s,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                decoration: BoxDecoration(
-                  color: AppColors.softBlueDeep,
-                  borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                ),
-                alignment: Alignment.center,
-                child: const Text('手机号验证码登录',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700)),
+            const CircleAvatar(
+              backgroundColor: Colors.white,
+              child: Icon(Icons.person, color: AppColors.softBlueDeep),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                      s.profile.nickname.isEmpty
+                          ? '喝水小达人'
+                          : s.profile.nickname,
+                      style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                  const Text('本地模式 · 数据保存在本机',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12)),
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            RippleButton(
-              onTap: () {
-                s.enterGuest();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已进入游客模式,数据仅本地保存')),
-                );
-              },
-              child: const Center(
-                child: Text('游客模式使用 >',
-                    style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 13,
-                        decoration: TextDecoration.underline)),
-              ),
-            ),
+            const Icon(Icons.favorite_outline,
+                  color: AppColors.softBlueDeep),
           ],
         ),
       ),
     );
   }
-
-  void _login(BuildContext context, AppState s) async {
-    final phone = await AppDialogs.inputDialog(
-      context,
-      title: '手机号登录',
-      hint: '请输入手机号',
-      keyboardType: TextInputType.phone,
-    );
-    if (phone == null || phone.isEmpty) return;
-    final code = await AppDialogs.inputDialog(
-      context,
-      title: '验证码',
-      hint: '请输入验证码',
-      keyboardType: TextInputType.number,
-    );
-    if (code == null || code.isEmpty) return;
-    s.login(phone);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('登录成功,云端数据同步完成')),
-      );
-    }
-  }
 }
 
 /// 飞书绑定核心卡片
-class _FeishuBindCard extends StatelessWidget {
+class _FeishuBindCard extends StatefulWidget {
+  @override
+  State<_FeishuBindCard> createState() => _FeishuBindCardState();
+}
+
+class _FeishuBindCardState extends State<_FeishuBindCard> {
+  bool _loading = false;
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
@@ -269,68 +200,92 @@ class _FeishuBindCard extends StatelessWidget {
   }
 
   Widget _unbound(BuildContext context, AppState s) {
-    final needLogin = s.isGuest;
-    return Opacity(
-      opacity: needLogin ? 0.6 : 1,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.dvr_outlined, size: 22, color: AppColors.softBlueDeep),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text('绑定飞书电脑端',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.phone_iphone, size: 22, color: AppColors.softBlueDeep),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('飞书登录',
+                  style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text('登录飞书后,定时提醒将自动推送到你的飞书私信',
+            style: TextStyle(
+                color: AppColors.textSecondary, fontSize: 13, height: 1.4)),
+        const SizedBox(height: 16),
+        if (!FeishuConfig.isConfigured) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.paused,
+              borderRadius: BorderRadius.circular(AppThemeRadius.s),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 18, color: AppColors.textSecondary),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '应用凭证未配置,请联系开发者填写 App ID 和 App Secret。\n'
+                    '需在 open.feishu.cn 创建自建应用,开启机器人能力,\n'
+                    '添加权限: im:message、contact:user.base:readonly,\n'
+                    '并在安全设置中添加重定向 URL:\n'
+                    'https://drinking.example.com/oauth/callback',
                     style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600)),
-              ),
-            ],
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                        height: 1.5),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          const Text('扫码授权后,提醒与打卡可推送至飞书私信',
-              style: TextStyle(
-                  color: AppColors.textSecondary, fontSize: 13, height: 1.4)),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+        ],
+        if (_loading)
+          const Center(child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: CircularProgressIndicator(color: AppColors.softBlueDeep),
+          ))
+        else
           RippleButton(
-            onTap: () {
-              if (needLogin) {
-                AppDialogs.centerDialog(
-                  context,
-                  title: '需要登录',
-                  content: '请先登录账号,再绑定飞书',
-                  actions: [
-                    DialogAction('稍后再说', () => Navigator.pop(context)),
-                    DialogAction('去登录', () {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('请在上方登录')),
-                      );
-                    }, primary: true),
-                  ],
-                );
-              } else {
-                _bindFeishu(context, s);
-              }
-            },
+            onTap: FeishuConfig.isConfigured ? () => _startOAuth(context) : null,
             borderRadius: AppThemeRadius.s,
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(vertical: 14),
               decoration: BoxDecoration(
-                color: AppColors.feishu,
+                color: FeishuConfig.isConfigured
+                    ? AppColors.feishu
+                    : AppColors.paused,
                 borderRadius: BorderRadius.circular(AppThemeRadius.s),
               ),
               alignment: Alignment.center,
-              child: const Text('扫码授权绑定飞书',
-                  style: TextStyle(
-                      color: AppColors.softBlueDeep,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.login, size: 18, color: AppColors.softBlueDeep),
+                  const SizedBox(width: 8),
+                  Text(
+                    FeishuConfig.isConfigured ? '飞书登录' : '凭证未配置',
+                    style: const TextStyle(
+                        color: AppColors.softBlueDeep,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 
@@ -347,7 +302,7 @@ class _FeishuBindCard extends StatelessWidget {
                 color: AppColors.feishu,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.dvr,
+              child: const Icon(Icons.phone_iphone,
                   size: 20, color: AppColors.softBlueDeep),
             ),
             const SizedBox(width: 12),
@@ -360,7 +315,7 @@ class _FeishuBindCard extends StatelessWidget {
                           color: AppColors.textPrimary,
                           fontSize: 15,
                           fontWeight: FontWeight.w700)),
-                  const Text('飞书已绑定',
+                  const Text('飞书已登录',
                       style:
                           TextStyle(color: AppColors.mintDeep, fontSize: 12)),
                 ],
@@ -374,11 +329,7 @@ class _FeishuBindCard extends StatelessWidget {
           children: [
             Expanded(
               child: RippleButton(
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('测试推送已发送至飞书')),
-                  );
-                },
+                onTap: () => _testPush(context, s),
                 child: Container(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
@@ -399,13 +350,13 @@ class _FeishuBindCard extends StatelessWidget {
               child: RippleButton(
                 onTap: () => AppDialogs.confirm(
                   context,
-                  title: '解除飞书绑定?',
-                  content: '解绑后所有飞书推送通道关闭,需重新授权',
-                  confirmText: '解绑',
+                  title: '退出飞书登录?',
+                  content: '退出后所有飞书推送通道关闭,需重新登录',
+                  confirmText: '退出',
                   onConfirm: () {
                     s.unbindFeishu();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已解绑飞书,全局推送已关闭')),
+                      const SnackBar(content: Text('已退出飞书登录,全局推送已关闭')),
                     );
                   },
                 ),
@@ -416,7 +367,7 @@ class _FeishuBindCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppThemeRadius.s),
                   ),
                   alignment: Alignment.center,
-                  child: const Text('解除绑定',
+                  child: const Text('退出登录',
                       style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 13,
@@ -430,22 +381,63 @@ class _FeishuBindCard extends StatelessWidget {
     );
   }
 
-  void _bindFeishu(BuildContext context, AppState s) {
-    // 模拟扫码授权
-    AppDialogs.centerDialog(
-      context,
-      title: '扫码授权',
-      content: '将跳转飞书完成授权,授权成功后自动回页',
-      actions: [
-        DialogAction('取消', () => Navigator.pop(context)),
-        DialogAction('去授权', () {
-          Navigator.pop(context);
-          s.bindFeishu('飞书用户');
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('授权成功,飞书推送已开启')),
-          );
-        }, primary: true),
-      ],
+  /// 启动飞书 OAuth 授权流程
+  /// 打开 WebView 内嵌飞书授权页,用户授权后返回 code,完成登录
+  Future<void> _startOAuth(BuildContext context) async {
+    setState(() => _loading = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final s = context.read<AppState>();
+
+    // 打开 OAuth 页面,等待用户授权返回 code
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const FeishuOAuthPage()),
+    );
+
+    if (!mounted) return;
+    setState(() => _loading = false);
+
+    if (code == null || code.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('已取消登录')),
+      );
+      return;
+    }
+
+    // 显示加载对话框
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('正在登录飞书...'),
+          ],
+        ),
+      ),
+    );
+
+    final (success, message) = await s.loginWithFeishuOAuth(code);
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop(); // 关闭加载对话框
+
+    messenger.showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+    );
+  }
+
+  /// 测试推送
+  Future<void> _testPush(BuildContext context, AppState s) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('正在发送测试消息...')),
+    );
+    final ok = await s.sendFeishuMessage('喝水提醒测试:飞书推送已连通~');
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(content: Text(ok ? '测试消息已发送至飞书' : '发送失败,请检查网络或凭证')),
     );
   }
 }
@@ -562,122 +554,6 @@ class _ProfileModule extends StatelessWidget {
             const Icon(Icons.chevron_right,
                 size: 20, color: AppColors.textDisabled),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 云端同步说明
-class _CloudSyncInfo extends StatelessWidget {
-  const _CloudSyncInfo();
-
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    return Column(
-      children: [
-        const SectionTitle('云端同步'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: CreamCard(
-            color: AppColors.mint,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.cloud_outlined,
-                        size: 20, color: AppColors.mintDeep),
-                    const SizedBox(width: 8),
-                    Text(s.isGuest ? '游客模式 · 仅本地' : '已开启云端备份',
-                        style: const TextStyle(
-                            color: AppColors.mintDeep,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                _item('定时提醒配置'),
-                _item('饮水打卡记录'),
-                _item('温柔徽章体系'),
-                _item('飞书推送配置'),
-                const SizedBox(height: 8),
-                Text(
-                  s.isGuest ? '登录后即可跨设备同步以上数据' : '以上数据支持跨设备同步,卸载重装不丢失',
-                  style:
-                      const TextStyle(color: AppColors.mintDeep, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _item(String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
-      child: Row(
-        children: [
-          const Icon(Icons.check_circle_outline,
-              size: 16, color: AppColors.mintDeep),
-          const SizedBox(width: 8),
-          Text(text,
-              style:
-                  const TextStyle(color: AppColors.textPrimary, fontSize: 13)),
-        ],
-      ),
-    );
-  }
-}
-
-/// 退出登录 - 保留本地 / 清空本地
-class _LogoutButton extends StatelessWidget {
-  const _LogoutButton();
-
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: RippleButton(
-        onTap: () => AppDialogs.centerDialog(
-          context,
-          title: '退出登录',
-          content: '退出后全局恢复游客状态,飞书与云端功能禁用',
-          actions: [
-            DialogAction('取消', () => Navigator.pop(context)),
-            DialogAction('保留本地', () {
-              Navigator.pop(context);
-              s.logout(keepLocal: true);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已退出,本地数据已保留')),
-              );
-            }),
-            DialogAction('清空本地', () {
-              Navigator.pop(context);
-              s.logout(keepLocal: false);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已退出,本地数据已清空')),
-              );
-            }, primary: true),
-          ],
-        ),
-        borderRadius: AppThemeRadius.m,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: AppColors.paused,
-            borderRadius: BorderRadius.circular(AppThemeRadius.m),
-          ),
-          alignment: Alignment.center,
-          child: const Text('退出登录',
-              style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600)),
         ),
       ),
     );

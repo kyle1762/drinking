@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../services/storage_service.dart';
+import '../services/feishu_service.dart';
+import '../services/feishu_config.dart';
 
 /// 全局状态 - 单一数据源(安卓ViewModel统一数据源)
 /// 三页面共享:账号三态、全局参数单向同步、提醒/记录/飞书配置
@@ -14,6 +16,9 @@ class AppState extends ChangeNotifier {
   AccountState _accountState = AccountState.guest;
   String _phone = '';
   String _feishuName = '';
+  String _feishuAppId = '';
+  String _feishuAppSecret = '';
+  String _feishuOpenId = '';
 
   AccountState get accountState => _accountState;
   bool get isGuest => _accountState == AccountState.guest;
@@ -21,6 +26,9 @@ class AppState extends ChangeNotifier {
   bool get isFeishuBound => _accountState == AccountState.boundFeishu;
   String get phone => _phone;
   String get feishuName => _feishuName;
+  String get feishuAppId => _feishuAppId;
+  String get feishuAppSecret => _feishuAppSecret;
+  String get feishuOpenId => _feishuOpenId;
 
   // ============ 全局参数(单向同步) ============
   UserProfile _profile = const UserProfile();
@@ -131,6 +139,9 @@ class AppState extends ChangeNotifier {
     _accountState = AccountState.values[d.accountStateIndex.clamp(0, 2)];
     _phone = d.phone;
     _feishuName = d.feishuName;
+    _feishuAppId = d.feishuAppId;
+    _feishuAppSecret = d.feishuAppSecret;
+    _feishuOpenId = d.feishuOpenId;
     _profile = d.profile;
     _notificationGranted = d.notificationGranted;
     _reminderEnabled = d.reminderEnabled;
@@ -170,21 +181,67 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void bindFeishu(String name) {
+  /// 绑定飞书 - 传入 App 凭证和 open_id
+  void bindFeishu({
+    required String name,
+    required String appId,
+    required String appSecret,
+    required String openId,
+  }) {
     _feishuName = name;
+    _feishuAppId = appId;
+    _feishuAppSecret = appSecret;
+    _feishuOpenId = openId;
     _accountState = AccountState.boundFeishu;
     _feishuPushEnabled = true;
     StorageService.saveFeishuName(name);
+    StorageService.saveFeishuAppId(appId);
+    StorageService.saveFeishuAppSecret(appSecret);
+    StorageService.saveFeishuOpenId(openId);
     StorageService.saveAccountState(_accountState.index);
     StorageService.saveFeishuPushEnabled(true);
     notifyListeners();
   }
 
+  /// 通过 OAuth 授权码登录飞书
+  /// 流程: code → user_access_token → 用户信息(open_id + name) → 绑定
+  /// 返回 (success, message)
+  Future<(bool success, String message)> loginWithFeishuOAuth(
+      String code) async {
+    // 1. 用 code 换取 user_access_token
+    final userToken = await FeishuService.exchangeCodeForToken(code);
+    if (userToken == null) {
+      return (false, '授权码无效或已过期,请重新登录');
+    }
+
+    // 2. 获取用户信息
+    final userInfo = await FeishuService.getUserInfo(userToken);
+    if (userInfo == null) {
+      return (false, '获取飞书用户信息失败');
+    }
+
+    // 3. 绑定飞书(使用预置 App 凭证)
+    bindFeishu(
+      name: userInfo.name,
+      appId: FeishuConfig.appId,
+      appSecret: FeishuConfig.appSecret,
+      openId: userInfo.openId,
+    );
+
+    return (true, '飞书登录成功!提醒将自动推送到飞书');
+  }
+
   void unbindFeishu() {
     _feishuName = '';
+    _feishuAppId = '';
+    _feishuAppSecret = '';
+    _feishuOpenId = '';
     _accountState = AccountState.loggedIn;
     _feishuPushEnabled = false;
     StorageService.saveFeishuName('');
+    StorageService.saveFeishuAppId('');
+    StorageService.saveFeishuAppSecret('');
+    StorageService.saveFeishuOpenId('');
     StorageService.saveAccountState(_accountState.index);
     StorageService.saveFeishuPushEnabled(false);
     notifyListeners();
@@ -193,6 +250,9 @@ class AppState extends ChangeNotifier {
   void logout({required bool keepLocal}) {
     _phone = '';
     _feishuName = '';
+    _feishuAppId = '';
+    _feishuAppSecret = '';
+    _feishuOpenId = '';
     _accountState = AccountState.guest;
     _feishuPushEnabled = false;
     _singleReminders.clear();
@@ -202,6 +262,9 @@ class AppState extends ChangeNotifier {
     } else {
       StorageService.savePhone('');
       StorageService.saveFeishuName('');
+      StorageService.saveFeishuAppId('');
+      StorageService.saveFeishuAppSecret('');
+      StorageService.saveFeishuOpenId('');
       StorageService.saveAccountState(0);
       StorageService.saveFeishuPushEnabled(false);
       StorageService.saveSingleReminders(_singleReminders);
@@ -344,6 +407,28 @@ class AppState extends ChangeNotifier {
     if (punch != null) _feishuPushOnPunch = punch;
     StorageService.saveFeishuPushFlags(reminder: reminder, punch: punch);
     notifyListeners();
+  }
+
+  /// 发送飞书消息(前台调用)
+  /// 返回是否发送成功
+  Future<bool> sendFeishuMessage(String text) async {
+    if (!isFeishuBound) return false;
+    // 优先使用已保存凭证,回退到预置凭证
+    final appId =
+        _feishuAppId.isNotEmpty ? _feishuAppId : FeishuConfig.appId;
+    final appSecret = _feishuAppSecret.isNotEmpty
+        ? _feishuAppSecret
+        : FeishuConfig.appSecret;
+    final token = await FeishuService.getTenantAccessToken(
+      appId: appId,
+      appSecret: appSecret,
+    );
+    if (token == null) return false;
+    return FeishuService.sendMessage(
+      token: token,
+      openId: _feishuOpenId,
+      text: text,
+    );
   }
 
   // ---- 免打扰 ----

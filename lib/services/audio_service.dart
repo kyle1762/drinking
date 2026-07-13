@@ -3,8 +3,8 @@ import 'package:audioplayers/audioplayers.dart';
 import '../models/models.dart';
 
 /// 音效服务 - 基于 audioplayers
-/// 播放 assets/sounds/ 下的治愈音效(流水/风铃/雨滴/钢琴)
-/// 需要在 pubspec.yaml 中声明 assets 资源,并将 mp3 文件放入 assets/sounds/
+/// 播放 assets/sounds/ 下的治愈音效(流水/风铃/雨滴/钢琴,均为 WAV 格式)
+/// 需要在 pubspec.yaml 中声明 assets 资源,WAV 文件已放入 assets/sounds/
 class AudioService {
   static final AudioPlayer _player = AudioPlayer();
   static bool _initialized = false;

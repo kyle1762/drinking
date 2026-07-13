@@ -36,6 +36,12 @@ dependencies:
   # 权限处理
   permission_handler: ^11.3.1
 
+  # 网络请求(飞书 API)
+  http: ^1.2.1
+
+  # WebView(飞书 OAuth 内嵌授权)
+  webview_flutter: ^4.8.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

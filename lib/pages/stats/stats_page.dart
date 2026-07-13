@@ -432,7 +432,6 @@ class _QuickPunchButtonsState extends State<_QuickPunchButtons> {
   }
 }
 
-/// 中心水滴打卡按钮
 class _PunchButton extends StatelessWidget {
   const _PunchButton();
 
@@ -440,101 +439,55 @@ class _PunchButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 16),
-      child: Column(
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => _punch(context, s),
-              borderRadius: BorderRadius.circular(100),
-              splashColor: Colors.white.withAlpha(120),
-              highlightColor: Colors.white.withAlpha(60),
-              child: Container(
-                width: 130,
-                height: 130,
-                decoration: BoxDecoration(
-                  color: AppColors.waterDrop,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                        color: AppColors.waterDrop.withAlpha(100),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8)),
-                  ],
-                ),
-                child: const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.water_drop, size: 48, color: Colors.white),
-                    SizedBox(height: 4),
-                    Text('喝一口',
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: CreamCard(
+        child: Column(
+          children: [
+            _QuickPunchButtons(),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                RippleButton(
+                  onTap: () => _customAmount(context, s),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppColors.divider),
+                      borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                    ),
+                    child: const Text('自定义容量',
                         style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700)),
-                    Text('点击打卡',
-                        style: TextStyle(color: Colors.white70, fontSize: 11)),
-                  ],
+                            color: AppColors.textSecondary, fontSize: 12)),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                RippleButton(
+                  onTap: () {
+                    s.undoLastRecord();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已撤销最近一次记录')),
+                    );
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppColors.divider),
+                      borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                    ),
+                    child: const Text('撤销',
+                        style: TextStyle(
+                            color: AppColors.textSecondary, fontSize: 12)),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 14),
-          _QuickPunchButtons(),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              RippleButton(
-                onTap: () => _customAmount(context, s),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.divider),
-                    borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                  ),
-                  child: const Text('自定义容量',
-                      style: TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12)),
-                ),
-              ),
-              const SizedBox(width: 12),
-              RippleButton(
-                onTap: () {
-                  s.undoLastRecord();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已撤销最近一次记录')),
-                  );
-                },
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.divider),
-                    borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                  ),
-                  child: const Text('撤销',
-                      style: TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12)),
-                ),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
-  }
-
-  void _punch(BuildContext context, AppState s) {
-    s.addRecord(s.profile.defaultCup);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已记录 ${s.profile.defaultCup} ml,真棒~')),
-    );
-    if (s.isFeishuBound && s.feishuPushOnPunch) {
-      _showSyncToFeishu(context, s);
-    }
   }
 
   void _customAmount(BuildContext context, AppState s) async {
@@ -554,77 +507,6 @@ class _PunchButton extends StatelessWidget {
         }
       }
     }
-  }
-
-  void _showSyncToFeishu(BuildContext context, AppState s) {
-    bool remember = s.rememberSyncToFeishu;
-    bool sync = true;
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppThemeRadius.m)),
-          title: const Text('同步至飞书?',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('将本次打卡记录推送至飞书电脑端',
-                  style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: () => setState(() => sync = !sync),
-                child: Row(children: [
-                  Icon(
-                      sync
-                          ? Icons.check_box_rounded
-                          : Icons.check_box_outline_blank_rounded,
-                      size: 20,
-                      color: AppColors.softBlueDeep),
-                  const SizedBox(width: 8),
-                  const Text('同步至飞书', style: TextStyle(fontSize: 14)),
-                ]),
-              ),
-              InkWell(
-                onTap: () => setState(() => remember = !remember),
-                child: Row(children: [
-                  Icon(
-                      remember
-                          ? Icons.check_box_rounded
-                          : Icons.check_box_outline_blank_rounded,
-                      size: 20,
-                      color: AppColors.softBlueDeep),
-                  const SizedBox(width: 8),
-                  const Text('记住我的选择', style: TextStyle(fontSize: 14)),
-                ]),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            TextButton(
-              onPressed: () {
-                s.setRememberSyncFeishu(remember);
-                if (sync) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('已同步至飞书')),
-                  );
-                }
-                if (context.mounted) Navigator.pop(context);
-              },
-              child: const Text('确定',
-                  style: TextStyle(
-                      color: AppColors.softBlueDeep,
-                      fontWeight: FontWeight.w600)),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }
 
@@ -1025,10 +907,18 @@ class _FeishuExport extends StatelessWidget {
         child: AbsorbPointer(
           absorbing: disabled,
           child: RippleButton(
-            onTap: () {
+            onTap: () async {
+              final rate = (s.todayRate * 100).round();
+              final msg = '今日喝水统计:\n已喝 ${s.todayTotal}ml / 目标 ${s.todayGoal}ml\n完成率 $rate%\n记录 ${s.records.length} 条';
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('统计卡片已推送至飞书私信')),
+                const SnackBar(content: Text('正在推送至飞书...')),
               );
+              final ok = await s.sendFeishuMessage(msg);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(ok ? '统计已推送至飞书' : '推送失败,请检查网络或飞书配置')),
+                );
+              }
             },
             borderRadius: AppThemeRadius.m,
             child: Container(

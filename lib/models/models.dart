@@ -10,10 +10,10 @@ enum AccountState {
 
 /// 提醒音效
 enum SoundType {
-  flow('流水', 'flow.mp3'),
-  windChime('风铃', 'wind.mp3'),
-  rainDrop('雨滴', 'rain.mp3'),
-  piano('轻钢琴', 'piano.mp3');
+  flow('流水', 'flow.wav'),
+  windChime('风铃', 'wind.wav'),
+  rainDrop('雨滴', 'rain.wav'),
+  piano('轻钢琴', 'piano.wav');
 
   const SoundType(this.label, this.file);
   final String label;
