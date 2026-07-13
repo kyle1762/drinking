@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import '../models/models.dart';
 import '../services/storage_service.dart';
 import '../services/feishu_service.dart';
-import '../services/feishu_config.dart';
 
 /// 全局状态 - 单一数据源(安卓ViewModel统一数据源)
 /// 三页面共享:账号三态、全局参数单向同步、提醒/记录/飞书配置
@@ -205,26 +204,36 @@ class AppState extends ChangeNotifier {
 
   /// 通过 OAuth 授权码登录飞书
   /// 流程: code → user_access_token → 用户信息(open_id + name) → 绑定
+  /// 凭证从本地存储读取(用户在设置页填写),不再使用硬编码
   /// 返回 (success, message)
   Future<(bool success, String message)> loginWithFeishuOAuth(
       String code) async {
-    // 1. 用 code 换取 user_access_token
-    final userToken = await FeishuService.exchangeCodeForToken(code);
+    // 1. 从本地存储读取用户配置的凭证
+    if (_feishuAppId.isEmpty || _feishuAppSecret.isEmpty) {
+      return (false, '请先在上方填写 App ID 和 App Secret 并保存');
+    }
+
+    // 2. 用 code 换取 user_access_token
+    final userToken = await FeishuService.exchangeCodeForToken(
+      code: code,
+      appId: _feishuAppId,
+      appSecret: _feishuAppSecret,
+    );
     if (userToken == null) {
       return (false, '授权码无效或已过期,请重新登录');
     }
 
-    // 2. 获取用户信息
+    // 3. 获取用户信息
     final userInfo = await FeishuService.getUserInfo(userToken);
     if (userInfo == null) {
       return (false, '获取飞书用户信息失败');
     }
 
-    // 3. 绑定飞书(使用预置 App 凭证)
+    // 4. 绑定飞书(使用用户本地配置的凭证)
     bindFeishu(
       name: userInfo.name,
-      appId: FeishuConfig.appId,
-      appSecret: FeishuConfig.appSecret,
+      appId: _feishuAppId,
+      appSecret: _feishuAppSecret,
       openId: userInfo.openId,
     );
 
@@ -409,19 +418,34 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 保存用户填写的飞书机器人凭证(App ID / App Secret)
+  /// 持久化到本地,后台 isolate 也可读取
+  void saveFeishuCredentials({required String appId, required String appSecret}) {
+    _feishuAppId = appId;
+    _feishuAppSecret = appSecret;
+    StorageService.saveFeishuAppId(appId);
+    StorageService.saveFeishuAppSecret(appSecret);
+    notifyListeners();
+  }
+
+  /// 测试飞书连接 - 读取本地凭证尝试获取 token
+  /// 返回 (success, message),供 UI 显示成功/失败原因
+  Future<(bool success, String message)> testFeishuConnection() async {
+    return FeishuService.testConnection(
+      appId: _feishuAppId,
+      appSecret: _feishuAppSecret,
+    );
+  }
+
   /// 发送飞书消息(前台调用)
+  /// 使用本地保存的用户凭证,不再回退预置凭证
   /// 返回是否发送成功
   Future<bool> sendFeishuMessage(String text) async {
     if (!isFeishuBound) return false;
-    // 优先使用已保存凭证,回退到预置凭证
-    final appId =
-        _feishuAppId.isNotEmpty ? _feishuAppId : FeishuConfig.appId;
-    final appSecret = _feishuAppSecret.isNotEmpty
-        ? _feishuAppSecret
-        : FeishuConfig.appSecret;
+    if (_feishuAppId.isEmpty || _feishuAppSecret.isEmpty) return false;
     final token = await FeishuService.getTenantAccessToken(
-      appId: appId,
-      appSecret: appSecret,
+      appId: _feishuAppId,
+      appSecret: _feishuAppSecret,
     );
     if (token == null) return false;
     return FeishuService.sendMessage(

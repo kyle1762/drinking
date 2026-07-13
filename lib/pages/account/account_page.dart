@@ -4,7 +4,6 @@ import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
 import '../../dialogs.dart';
-import '../../services/feishu_config.dart';
 import 'feishu_oauth_page.dart';
 
 class AccountPage extends StatelessWidget {
@@ -19,6 +18,7 @@ class AccountPage extends StatelessWidget {
           children: [
             const _IllustrationHeader(),
             const _WelcomeCard(),
+            _FeishuConfigCard(),
             _FeishuBindCard(),
             _ProfileModule(),
           ],
@@ -174,6 +174,275 @@ class _WelcomeCard extends StatelessWidget {
   }
 }
 
+/// 飞书机器人配置卡片 - 用户自定义接入自己的飞书机器人
+/// 包含 App ID/Secret 输入框、保存按钮、测试连接按钮、启用飞书推送开关
+class _FeishuConfigCard extends StatefulWidget {
+  @override
+  State<_FeishuConfigCard> createState() => _FeishuConfigCardState();
+}
+
+class _FeishuConfigCardState extends State<_FeishuConfigCard> {
+  late final TextEditingController _appIdCtrl;
+  late final TextEditingController _appSecretCtrl;
+  bool _obscureSecret = true;
+  bool _testing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final s = context.read<AppState>();
+    _appIdCtrl = TextEditingController(text: s.feishuAppId);
+    _appSecretCtrl = TextEditingController(text: s.feishuAppSecret);
+  }
+
+  @override
+  void dispose() {
+    _appIdCtrl.dispose();
+    _appSecretCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    return Column(
+      children: [
+        const SectionTitle('飞书机器人配置'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: CreamCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.smart_toy_outlined,
+                        size: 20, color: AppColors.softBlueDeep),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text('自定义飞书机器人',
+                          style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text('App ID',
+                    style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _appIdCtrl,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'cli_xxxxxxxxxxxxxx',
+                    hintStyle: const TextStyle(
+                        color: AppColors.textDisabled, fontSize: 13),
+                    filled: true,
+                    fillColor: AppColors.cream,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('App Secret',
+                    style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _appSecretCtrl,
+                  obscureText: _obscureSecret,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'XXXXXXXXXXXXXXXX',
+                    hintStyle: const TextStyle(
+                        color: AppColors.textDisabled, fontSize: 13),
+                    filled: true,
+                    fillColor: AppColors.cream,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                      borderSide: BorderSide.none,
+                    ),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscureSecret
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        size: 20,
+                        color: AppColors.textSecondary,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureSecret = !_obscureSecret),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.paused,
+                    borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline,
+                          size: 16, color: AppColors.textSecondary),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '1. 访问 open.feishu.cn 创建自建应用\n'
+                          '2. 开启「机器人」能力\n'
+                          '3. 权限:im:message、contact:user.base:readonly\n'
+                          '4. 安全设置添加重定向 URL:\n'
+                          '   https://drinking.example.com/oauth/callback',
+                          style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                              height: 1.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: RippleButton(
+                        onTap: _save,
+                        borderRadius: AppThemeRadius.s,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: AppColors.feishu,
+                            borderRadius:
+                                BorderRadius.circular(AppThemeRadius.s),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text('保存配置',
+                              style: TextStyle(
+                                  color: AppColors.softBlueDeep,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: RippleButton(
+                        onTap: _testing ? null : _testConnection,
+                        borderRadius: AppThemeRadius.s,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          decoration: BoxDecoration(
+                            color: _testing
+                                ? AppColors.paused
+                                : AppColors.softBlue,
+                            borderRadius:
+                                BorderRadius.circular(AppThemeRadius.s),
+                          ),
+                          alignment: Alignment.center,
+                          child: _testing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: AppColors.softBlueDeep),
+                                )
+                              : const Text('测试连接',
+                                  style: TextStyle(
+                                      color: AppColors.softBlueDeep,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const Divider(height: 28),
+                Row(
+                  children: [
+                    const Icon(Icons.notifications_active_outlined,
+                        size: 20, color: AppColors.softBlueDeep),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text('启用飞书推送',
+                          style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    Switch(
+                      value: s.feishuPushEnabled,
+                      onChanged: (v) {
+                        if (v && _appIdCtrl.text.trim().isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('请先填写并保存 App ID 和 Secret')),
+                          );
+                          return;
+                        }
+                        s.setFeishuPushEnabled(v);
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _save() {
+    final s = context.read<AppState>();
+    final appId = _appIdCtrl.text.trim();
+    final appSecret = _appSecretCtrl.text.trim();
+    if (appId.isEmpty || appSecret.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('App ID 和 App Secret 不能为空')),
+      );
+      return;
+    }
+    s.saveFeishuCredentials(appId: appId, appSecret: appSecret);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('配置已保存')),
+    );
+  }
+
+  Future<void> _testConnection() async {
+    // 先保存当前输入,再测试(避免测试的是旧凭证)
+    final s = context.read<AppState>();
+    final appId = _appIdCtrl.text.trim();
+    final appSecret = _appSecretCtrl.text.trim();
+    if (appId.isEmpty || appSecret.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写 App ID 和 App Secret')),
+      );
+      return;
+    }
+    s.saveFeishuCredentials(appId: appId, appSecret: appSecret);
+    setState(() => _testing = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final (success, message) = await s.testFeishuConnection();
+    if (!mounted) return;
+    setState(() => _testing = false);
+    messenger.showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+    );
+  }
+}
+
 /// 飞书绑定核心卡片
 class _FeishuBindCard extends StatefulWidget {
   @override
@@ -200,6 +469,9 @@ class _FeishuBindCardState extends State<_FeishuBindCard> {
   }
 
   Widget _unbound(BuildContext context, AppState s) {
+    // 凭证是否已配置:检查本地保存的 App ID 是否非空
+    final hasCredentials =
+        s.feishuAppId.isNotEmpty && s.feishuAppSecret.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -221,36 +493,15 @@ class _FeishuBindCardState extends State<_FeishuBindCard> {
             style: TextStyle(
                 color: AppColors.textSecondary, fontSize: 13, height: 1.4)),
         const SizedBox(height: 16),
-        if (!FeishuConfig.isConfigured) ...[
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.paused,
-              borderRadius: BorderRadius.circular(AppThemeRadius.s),
-            ),
-            child: const Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.info_outline, size: 18, color: AppColors.textSecondary),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '应用凭证未配置,请联系开发者填写 App ID 和 App Secret。\n'
-                    '需在 open.feishu.cn 创建自建应用,开启机器人能力,\n'
-                    '添加权限: im:message、contact:user.base:readonly,\n'
-                    '并在安全设置中添加重定向 URL:\n'
-                    'https://drinking.example.com/oauth/callback',
-                    style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 11,
-                        height: 1.5),
-                  ),
-                ),
-              ],
+        if (!hasCredentials)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '请先在上方「飞书机器人配置」填写并保存 App ID 和 Secret',
+              style: TextStyle(
+                  color: AppColors.textSecondary, fontSize: 12, height: 1.4),
             ),
           ),
-          const SizedBox(height: 12),
-        ],
         if (_loading)
           const Center(child: Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
@@ -258,12 +509,12 @@ class _FeishuBindCardState extends State<_FeishuBindCard> {
           ))
         else
           RippleButton(
-            onTap: FeishuConfig.isConfigured ? () => _startOAuth(context) : null,
+            onTap: hasCredentials ? () => _startOAuth(context) : null,
             borderRadius: AppThemeRadius.s,
             child: Container(
               padding: const EdgeInsets.symmetric(vertical: 14),
               decoration: BoxDecoration(
-                color: FeishuConfig.isConfigured
+                color: hasCredentials
                     ? AppColors.feishu
                     : AppColors.paused,
                 borderRadius: BorderRadius.circular(AppThemeRadius.s),
@@ -275,7 +526,7 @@ class _FeishuBindCardState extends State<_FeishuBindCard> {
                   const Icon(Icons.login, size: 18, color: AppColors.softBlueDeep),
                   const SizedBox(width: 8),
                   Text(
-                    FeishuConfig.isConfigured ? '飞书登录' : '凭证未配置',
+                    hasCredentials ? '飞书登录' : '凭证未配置',
                     style: const TextStyle(
                         color: AppColors.softBlueDeep,
                         fontSize: 14,

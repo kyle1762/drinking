@@ -8,6 +8,7 @@ import '../../dialogs.dart';
 import '../../services/notification_service.dart';
 import '../../services/alarm_service.dart';
 import '../../services/audio_service.dart';
+import '../stats/stats_page.dart';
 
 class ReminderPage extends StatelessWidget {
   const ReminderPage({super.key});
@@ -35,11 +36,14 @@ class ReminderPage extends StatelessWidget {
                 actionText: '去登录',
                 onAction: () => _goAccount(context),
               ),
+            const CloudProgressCard(),
+            const PunchButton(),
+            const SizedBox(height: 8),
+            const RecordList(),
             _OverviewCard(),
             _ReminderModule(),
             _TimeRangeModule(),
             _EarphoneModule(),
-            _FeishuPushModule(),
             const SizedBox(height: 16),
             _BottomActions(),
           ],
@@ -393,14 +397,14 @@ class _TimeRangeModule extends StatelessWidget {
 
   Widget _timePicker(BuildContext context, String label, String value,
       ValueChanged<String> onPick) {
-    final s = context.read<AppState>();
     return Expanded(
       child: RippleButton(
         onTap: () async {
           final t = await AppDialogs.pickTime(context, initial: value);
-          if (t != null)
+          if (t != null) {
             onPick(
                 '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}');
+          }
         },
         borderRadius: AppThemeRadius.s,
         child: Container(
@@ -429,323 +433,56 @@ class _TimeRangeModule extends StatelessWidget {
   }
 }
 
-/// 耳机专属设置 - 产品核心
+/// 治愈音效设置 - 仅保留音效切换
 class _EarphoneModule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
     return Column(
       children: [
-        const SectionTitle('耳机专属设置'),
-        if (!s.earphoneConnected)
-          const SoftBanner(
-            icon: Icons.headset_off_outlined,
-            text: '当前无耳机,仅静默通知。插入耳机后自动恢复音效',
-          ),
+        const SectionTitle('治愈音效'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: CreamCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 耳机提醒总开关
-                Row(
+                const Row(
                   children: [
-                    Icon(
-                        s.earphoneConnected
-                            ? Icons.headphones
-                            : Icons.headset_off_outlined,
-                        size: 20,
-                        color: AppColors.softBlueDeep),
-                    const SizedBox(width: 10),
+                    Icon(Icons.music_note_rounded,
+                        size: 20, color: AppColors.softBlueDeep),
+                    SizedBox(width: 10),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('耳机提醒',
-                              style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600)),
-                          Text('铃声仅路由至耳机,外放静音',
-                              style: Theme.of(context).textTheme.bodySmall),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: s.earphoneEnabled,
-                      onChanged: (v) {
-                        if (!v) {
-                          _confirmDisableEarphone(context, s);
-                        } else {
-                          s.setEarphoneEnabled(true);
-                        }
-                      },
+                      child: Text('提醒音效',
+                          style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
                     ),
                   ],
                 ),
-                if (s.earphoneEnabled) ...[
-                  const Divider(height: 24),
-                  const Text('治愈音效',
-                      style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 8,
-                    children: SoundType.values.map((sd) {
-                      final selected = s.sound == sd;
-                      return _Chip(
-                        label: sd.label,
-                        selected: selected,
-                        onTap: () {
-                          s.setSound(sd);
-                          AudioService.playSound(sd, volume: s.earphoneVolume);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      const Text('提醒音量',
-                          style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600)),
-                      const Spacer(),
-                      Text('${(s.earphoneVolume * 100).round()}%',
-                          style: const TextStyle(
-                              color: AppColors.softBlueDeep,
-                              fontWeight: FontWeight.w700)),
-                    ],
-                  ),
-                  Slider(
-                    value: s.earphoneVolume,
-                    onChanged: (v) => s.setEarphoneVolume(v),
-                  ),
-                  const Text('仅控制本App提醒音,不影响系统媒体音量',
-                      style: TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12)),
-                ],
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: SoundType.values.map((sd) {
+                    final selected = s.sound == sd;
+                    return _Chip(
+                      label: sd.label,
+                      selected: selected,
+                      onTap: () {
+                        s.setSound(sd);
+                        AudioService.playSound(sd, volume: s.earphoneVolume);
+                      },
+                    );
+                  }).toList(),
+                ),
               ],
             ),
           ),
         ),
       ],
     );
-  }
-
-  void _confirmDisableEarphone(BuildContext context, AppState s) {
-    bool syncFeishu = false;
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppThemeRadius.m)),
-          title: const Text('关闭耳机提醒?',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('关闭后将仅保留静默通知',
-                  style:
-                      TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: () => setState(() => syncFeishu = !syncFeishu),
-                child: Row(
-                  children: [
-                    Icon(
-                        syncFeishu
-                            ? Icons.check_box_rounded
-                            : Icons.check_box_outline_blank_rounded,
-                        size: 20,
-                        color: AppColors.softBlueDeep),
-                    const SizedBox(width: 8),
-                    const Text('同步关闭飞书推送', style: TextStyle(fontSize: 14)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-            TextButton(
-              onPressed: () {
-                s.setEarphoneEnabled(false);
-                if (syncFeishu) s.setFeishuPushEnabled(false);
-                if (context.mounted) Navigator.pop(context);
-              },
-              child: const Text('确认关闭',
-                  style: TextStyle(color: AppColors.softBlueDeep)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 飞书推送设置
-class _FeishuPushModule extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    final disabled = s.isGuest || !s.isFeishuBound;
-    return Column(
-      children: [
-        const SectionTitle('飞书电脑同步'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: CreamCard(
-            child: Opacity(
-              opacity: disabled ? 0.5 : 1,
-              child: AbsorbPointer(
-                absorbing: disabled,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.dvr_outlined,
-                            size: 20, color: AppColors.softBlueDeep),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('飞书推送',
-                                  style: TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w600)),
-                              Text(
-                                s.isGuest
-                                    ? '登录后开启'
-                                    : (s.isFeishuBound
-                                        ? '已绑定 ${s.feishuName}'
-                                        : '点击绑定飞书'),
-                                style: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Switch(
-                          value: s.feishuPushEnabled,
-                          onChanged: (v) => s.setFeishuPushEnabled(v),
-                        ),
-                      ],
-                    ),
-                    if (s.isFeishuBound && s.feishuPushEnabled) ...[
-                      const Divider(height: 24),
-                      const Text('推送文案',
-                          style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller:
-                            TextEditingController(text: s.feishuPushText),
-                        decoration: InputDecoration(
-                          isDense: true,
-                          filled: true,
-                          fillColor: AppColors.cream,
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(AppThemeRadius.s),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        onChanged: s.setFeishuPushText,
-                      ),
-                      const SizedBox(height: 12),
-                      const Text('推送时机',
-                          style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 4),
-                      _checkTile('提醒时推送', s.feishuPushOnReminder,
-                          (v) => s.setFeishuPushFlags(reminder: v)),
-                      _checkTile('打卡同步', s.feishuPushOnPunch,
-                          (v) => s.setFeishuPushFlags(punch: v)),
-                    ],
-                    if (disabled)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: RippleButton(
-                            onTap: () => _guideLoginOrBind(context, s),
-                            child: Text(s.isGuest ? '去登录 >' : '去绑定 >',
-                                style: const TextStyle(
-                                    color: AppColors.softBlueDeep,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600)),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _checkTile(String label, bool value, ValueChanged<bool> onChanged) {
-    return InkWell(
-      onTap: () => onChanged(!value),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            Icon(
-                value
-                    ? Icons.check_box_rounded
-                    : Icons.check_box_outline_blank_rounded,
-                size: 20,
-                color: AppColors.softBlueDeep),
-            const SizedBox(width: 8),
-            Text(label, style: const TextStyle(fontSize: 14)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _guideLoginOrBind(BuildContext context, AppState s) {
-    if (s.isGuest) {
-      AppDialogs.centerDialog(
-        context,
-        title: '需要登录',
-        content: '飞书推送需登录后使用,是否前往登录?',
-        actions: [
-          DialogAction('稍后再说', () => Navigator.pop(context)),
-          DialogAction('去登录', () {
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('请点击底部「账号&飞书」登录')),
-            );
-          }, primary: true),
-        ],
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请前往账号页绑定飞书')),
-      );
-    }
   }
 }
 

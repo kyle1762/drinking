@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import '../../services/feishu_config.dart';
+import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 
 /// 飞书 OAuth 登录页 - WebView 内嵌
@@ -83,7 +85,9 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage>
           },
         ),
       )
-      ..loadRequest(Uri.parse(FeishuConfig.buildOAuthUrl()));
+      ..loadRequest(Uri.parse(FeishuConfig.buildOAuthUrl(
+        context.read<AppState>().feishuAppId,
+      )));
   }
 
   @override

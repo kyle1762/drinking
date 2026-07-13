@@ -5,6 +5,7 @@ import 'feishu_config.dart';
 
 /// 飞书 API 服务
 /// 负责 OAuth 授权、获取 user_access_token、查询用户信息、发送消息
+/// 所有凭证(App ID/Secret)均由调用方传入,从本地存储动态读取,不再使用硬编码
 /// 支持前台和后台 isolate 调用
 class FeishuService {
   static const _baseUrl = 'https://open.feishu.cn/open-apis';
@@ -12,19 +13,24 @@ class FeishuService {
   // ============ OAuth 流程 ============
 
   /// 用授权码 code 换取 user_access_token
+  /// [appId]/[appSecret] 由调用方从本地存储读取后传入
   /// 返回 token 字符串,失败返回 null
   /// 注意:v2 接口返回标准 OAuth 2.0 格式,access_token 在根层级
   /// 成功: { access_token, token_type, expires_in, refresh_token, open_id, ... }
   /// 失败: { error, error_description }
-  static Future<String?> exchangeCodeForToken(String code) async {
+  static Future<String?> exchangeCodeForToken({
+    required String code,
+    required String appId,
+    required String appSecret,
+  }) async {
     try {
       final resp = await http.post(
         Uri.parse('$_baseUrl/authen/v2/oauth/token'),
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: jsonEncode({
           'grant_type': 'authorization_code',
-          'client_id': FeishuConfig.appId,
-          'client_secret': FeishuConfig.appSecret,
+          'client_id': appId,
+          'client_secret': appSecret,
           'code': code,
           'redirect_uri': FeishuConfig.redirectUri,
         }),
@@ -61,19 +67,18 @@ class FeishuService {
 
   // ============ 消息发送 ============
 
-  /// 获取 tenant_access_token(用预置凭证)
+  /// 获取 tenant_access_token(用用户配置的凭证)
+  /// [appId]/[appSecret] 必填,由调用方从本地存储读取后传入
   /// 返回 token 字符串,失败返回 null
   static Future<String?> getTenantAccessToken({
-    String? appId,
-    String? appSecret,
+    required String appId,
+    required String appSecret,
   }) async {
-    final aid = appId ?? FeishuConfig.appId;
-    final asec = appSecret ?? FeishuConfig.appSecret;
     try {
       final resp = await http.post(
         Uri.parse('$_baseUrl/auth/v3/tenant_access_token/internal'),
         headers: {'Content-Type': 'application/json; charset=utf-8'},
-        body: jsonEncode({'app_id': aid, 'app_secret': asec}),
+        body: jsonEncode({'app_id': appId, 'app_secret': appSecret}),
       );
       if (resp.statusCode != 200) return null;
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -81,6 +86,38 @@ class FeishuService {
       return data['tenant_access_token'] as String?;
     } catch (_) {
       return null;
+    }
+  }
+
+  /// 测试飞书连接 - 用于设置页「测试连接」按钮
+  /// 读取本地凭证,尝试获取一次 tenant_access_token
+  /// 返回 (success, message):成功提示「飞书连接成功」,失败给出具体原因
+  static Future<(bool success, String message)> testConnection({
+    required String appId,
+    required String appSecret,
+  }) async {
+    if (appId.isEmpty || appSecret.isEmpty) {
+      return (false, '请先填写 App ID 和 App Secret');
+    }
+    try {
+      final resp = await http.post(
+        Uri.parse('$_baseUrl/auth/v3/tenant_access_token/internal'),
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: jsonEncode({'app_id': appId, 'app_secret': appSecret}),
+      );
+      if (resp.statusCode != 200) {
+        return (false, '网络错误: HTTP ${resp.statusCode}');
+      }
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      final code = data['code'];
+      if (code == 0 && data['tenant_access_token'] != null) {
+        return (true, '飞书连接成功');
+      }
+      // 飞书错误码: 99773=App ID 不存在, 99991663=App Secret 错误
+      final msg = data['msg'] as String? ?? '未知错误';
+      return (false, '凭证错误: $msg (code: $code)');
+    } catch (e) {
+      return (false, '网络异常: $e');
     }
   }
 
@@ -177,17 +214,14 @@ class FeishuService {
       // 5. 重复周期检查
       if (!_isRepeatDay(prefs)) return;
 
-      // 6. 获取凭证
-      String? appId = prefs.getString(_kFeishuAppId);
-      String? appSecret = prefs.getString(_kFeishuAppSecret);
-      // 若未保存用户凭证,尝试使用预置凭证
-      appId ??= FeishuConfig.appId != 'YOUR_APP_ID' ? FeishuConfig.appId : null;
-      appSecret ??= FeishuConfig.appSecret != 'YOUR_APP_SECRET'
-          ? FeishuConfig.appSecret
-          : null;
-
+      // 6. 获取凭证(仅使用用户本地配置,不再回退预置凭证)
+      final appId = prefs.getString(_kFeishuAppId);
+      final appSecret = prefs.getString(_kFeishuAppSecret);
       final openId = prefs.getString(_kFeishuOpenId);
-      if (appId == null || appSecret == null || openId == null) return;
+      // 凭证或 open_id 缺失则跳过推送(本地通知仍会触发)
+      if (appId == null || appId.isEmpty) return;
+      if (appSecret == null || appSecret.isEmpty) return;
+      if (openId == null || openId.isEmpty) return;
 
       // 7. 构建消息(含今日统计)
       final message = _buildReminderMessage(prefs);
@@ -311,10 +345,14 @@ class FeishuService {
   }
 
   /// 检查飞书是否已配置完整(用于 UI 判断)
+  /// 仅检查本地是否已保存 App ID / Secret / open_id
   static Future<bool> isConfigured() async {
     final prefs = await SharedPreferences.getInstance();
-    final hasStored = prefs.getString(_kFeishuOpenId) != null;
-    final hasPreset = FeishuConfig.isConfigured;
-    return hasStored || hasPreset;
+    final appId = prefs.getString(_kFeishuAppId);
+    final appSecret = prefs.getString(_kFeishuAppSecret);
+    final openId = prefs.getString(_kFeishuOpenId);
+    return appId != null && appId.isNotEmpty &&
+        appSecret != null && appSecret.isNotEmpty &&
+        openId != null && openId.isNotEmpty;
   }
 }

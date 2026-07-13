@@ -2,23 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
 import 'reminder/reminder_page.dart';
-import 'stats/stats_page.dart';
 import 'account/account_page.dart';
 
 const _kTabs = <_TabItem>[
   _TabItem(
-      icon: Icons.notifications_none_rounded,
-      label: '提醒设置',
+      icon: Icons.water_drop_outlined,
+      label: '喝水提醒',
       page: ReminderPage()),
-  _TabItem(icon: Icons.water_drop_outlined, label: '喝水统计', page: StatsPage()),
   _TabItem(
       icon: Icons.person_outline_rounded, label: '账号&飞书', page: AccountPage()),
 ];
 
-/// 首页 - 严格三Tab,无子页面无首页
+/// 首页 - 两Tab结构(提醒设置+统计已合并)
 /// 安卓返回键逻辑:
-/// 1. Tab内返回:不退出App,回到上一次Tab
-/// 2. 弹窗状态下返回:关闭弹窗(Flutter自动处理)
+/// 1. 弹窗状态下返回:关闭弹窗(Flutter自动处理)
+/// 2. 非首个Tab:回到上一个Tab
 /// 3. 首个Tab连续两次返回:退出App
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
