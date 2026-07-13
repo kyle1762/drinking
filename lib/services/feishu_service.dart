@@ -13,6 +13,9 @@ class FeishuService {
 
   /// 用授权码 code 换取 user_access_token
   /// 返回 token 字符串,失败返回 null
+  /// 注意:v2 接口返回标准 OAuth 2.0 格式,access_token 在根层级
+  /// 成功: { access_token, token_type, expires_in, refresh_token, open_id, ... }
+  /// 失败: { error, error_description }
   static Future<String?> exchangeCodeForToken(String code) async {
     try {
       final resp = await http.post(
@@ -28,8 +31,8 @@ class FeishuService {
       );
       if (resp.statusCode != 200) return null;
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (data['code'] != 0) return null;
-      return data['data']?['access_token'] as String?;
+      if (data.containsKey('error')) return null;
+      return data['access_token'] as String?;
     } catch (_) {
       return null;
     }
