@@ -95,38 +95,53 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // App 从后台切回前台时(用户从飞书 App 确认后切回)
-    // 自动清除遮罩并 reload WebView,让网页跳转到 redirect_uri 完成授权
+    // 只清除遮罩,不 reload - 让 WebView 保持当前状态自动跳转到 redirect_uri
+    // reload 会重新加载授权页,导致 session 丢失,登录失败
     if (state == AppLifecycleState.resumed && _waitingFeishuConfirm) {
       setState(() => _waitingFeishuConfirm = false);
-      _controller.reload();
     }
   }
 
   /// 注入 JS:自动切换到账号密码登录 tab,隐藏扫码登录
-  /// 飞书授权页默认显示扫码,通过查找并点击"密码登录"tab 切换
+  /// 飞书授权页是 SPA,页面加载完成时内容可能还没渲染
+  /// 使用 MutationObserver 持续监听 DOM,一旦发现"密码登录"tab 就点击
   void _switchToPasswordLogin() {
     const js = '''
 (function() {
-  try {
-    // 1. 查找并点击"密码登录"/"账号登录"tab
-    var clickables = document.querySelectorAll('a, button, span, div, li');
-    var keywords = ['密码登录', '账号登录', '账号密码', '密码', '账号'];
-    for (var i = 0; i < clickables.length; i++) {
-      var el = clickables[i];
-      var text = (el.textContent || '').trim();
-      if (text.length > 0 && text.length < 20) {
-        for (var k = 0; k < keywords.length; k++) {
-          if (text === keywords[k] || text.indexOf(keywords[k]) === 0) {
-            el.click();
-            return;
+  if (window.__pwLoginSwitched) return;
+  function trySwitch() {
+    try {
+      var clickables = document.querySelectorAll('a, button, span, div, li, [role="tab"], [role="button"]');
+      var keywords = ['密码登录', '账号登录', '账号密码', '密码', '账号', 'Password', 'password'];
+      for (var i = 0; i < clickables.length; i++) {
+        var el = clickables[i];
+        var text = (el.textContent || '').trim();
+        if (text.length > 0 && text.length < 20) {
+          for (var k = 0; k < keywords.length; k++) {
+            if (text === keywords[k] || text.indexOf(keywords[k]) === 0) {
+              el.click();
+              window.__pwLoginSwitched = true;
+              return true;
+            }
           }
         }
       }
+      var tabs = document.querySelectorAll('[class*="password"], [class*="account"], [data-type="password"]');
+      if (tabs.length > 0) { tabs[0].click(); window.__pwLoginSwitched = true; return true; }
+    } catch(e) {}
+    return false;
+  }
+  // 立即尝试一次
+  if (trySwitch()) return;
+  // 用 MutationObserver 持续监听 DOM 变化(SPA 内容延迟渲染)
+  var observer = new MutationObserver(function() {
+    if (trySwitch()) {
+      observer.disconnect();
     }
-    // 2. 备用:通过 class 查找密码登录 tab
-    var tabs = document.querySelectorAll('[class*="password"], [class*="account"], [data-type="password"]');
-    if (tabs.length > 0) { tabs[0].click(); return; }
-  } catch(e) {}
+  });
+  observer.observe(document.documentElement, {childList: true, subtree: true});
+  // 10秒后停止监听(避免无限运行)
+  setTimeout(function() { observer.disconnect(); }, 10000);
 })();
 ''';
     _controller.runJavaScript(js);
