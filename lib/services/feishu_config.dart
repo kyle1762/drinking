@@ -30,6 +30,7 @@ class FeishuConfig {
       appId != 'YOUR_APP_ID' && appSecret != 'YOUR_APP_SECRET';
 
   /// 构建 OAuth 授权 URL
+  /// 注意:授权页面域名是 accounts.feishu.cn,不是 open.feishu.cn
   static String buildOAuthUrl() {
     final scope = scopes.join(' ');
     final params = <String, String>{
@@ -41,6 +42,6 @@ class FeishuConfig {
     final query = params.entries
         .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
         .join('&');
-    return 'https://open.feishu.cn/open-apis/authen/v1/authorize?$query';
+    return 'https://accounts.feishu.cn/open-apis/authen/v1/authorize?$query';
   }
 }
