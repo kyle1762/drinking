@@ -83,54 +83,57 @@ class _SplitHeader extends StatelessWidget {
     final s = context.watch<AppState>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // 左:概览卡片
-          Expanded(
-            flex: 2,
-            child: CreamCard(
-              color: AppColors.softBlue,
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.water_drop_outlined,
-                          size: 18, color: AppColors.softBlueDeep),
-                      const SizedBox(width: 6),
-                      const Expanded(
-                        child: Text('今日提醒概览',
-                            style: TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700)),
-                      ),
-                      StatusTag(
-                        text: s.reminderPaused
-                            ? '已暂停'
-                            : (s.reminderEnabled ? '提醒中' : '已暂停'),
-                        active: s.reminderEnabled && !s.reminderPaused,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  _overviewItem('下次提醒', s.nextReminderTime),
-                  _overviewItem('当前间隔', '${s.loopInterval} 分钟'),
-                  _overviewItem('今日已提醒', '${s.todayReminderCount} 次'),
-                ],
+      child: AspectRatio(
+        aspectRatio: 1.35, // 给 Row 有界高度,避免无界高度下 CustomPaint 崩溃
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 左:概览卡片
+            Expanded(
+              flex: 2,
+              child: CreamCard(
+                color: AppColors.softBlue,
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.water_drop_outlined,
+                            size: 18, color: AppColors.softBlueDeep),
+                        const SizedBox(width: 6),
+                        const Expanded(
+                          child: Text('今日提醒概览',
+                              style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                        StatusTag(
+                          text: s.reminderPaused
+                              ? '已暂停'
+                              : (s.reminderEnabled ? '提醒中' : '已暂停'),
+                          active: s.reminderEnabled && !s.reminderPaused,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    _overviewItem('下次提醒', s.nextReminderTime),
+                    _overviewItem('当前间隔', '${s.loopInterval} 分钟'),
+                    _overviewItem('今日已提醒', '${s.todayReminderCount} 次'),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          // 右:空心小人容器(占据主要高度)
-          Expanded(
-            flex: 3,
-            child: _FigureWidget(),
-          ),
-        ],
+            const SizedBox(width: 12),
+            // 右:空心小人容器(占据主要高度)
+            Expanded(
+              flex: 3,
+              child: _FigureWidget(),
+            ),
+          ],
+        ),
       ),
     );
   }
