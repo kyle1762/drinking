@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/models.dart';
+import 'audio_service.dart';
 import 'feishu_service.dart';
 
 /// 通知服务 - 基于 flutter_local_notifications
@@ -22,6 +24,9 @@ class NotificationService {
   static const _kRangeStart = 'rangeStart';
   static const _kRangeEnd = 'rangeEnd';
   static const _kRepeat = 'repeat';
+  static const _kSound = 'sound';
+  static const _kEarphoneEnabled = 'earphoneEnabled';
+  static const _kEarphoneVolume = 'earphoneVolume';
 
   /// 初始化插件与通知渠道
   static Future<void> init() async {
@@ -105,6 +110,16 @@ class NotificationService {
     if (!_isRepeatDay(prefs)) return;
 
     await showReminder(id: id);
+
+    // 播放治愈音效(从 SharedPreferences 读取用户配置的音效类型与音量)
+    // 使用 playFromBackground 在后台 isolate 中独立播放,配置了混合模式
+    if (prefs.getBool(_kEarphoneEnabled) ?? true) {
+      final soundName = prefs.getString(_kSound);
+      final sound = SoundType.fromName(soundName);
+      final volume = prefs.getDouble(_kEarphoneVolume) ?? 0.6;
+      await AudioService.playFromBackground(sound, volume: volume);
+    }
+
     // 同时发送飞书推送(后台 isolate 中直接读 SharedPreferences)
     await FeishuService.pushReminderFromBackground();
   }

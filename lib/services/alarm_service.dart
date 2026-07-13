@@ -22,6 +22,7 @@ class AlarmService {
   /// 注册循环提醒
   /// [intervalMinutes] 间隔分钟数
   /// 内部会先取消旧的循环闹钟再注册新的
+  /// 使用 exact + allowWhileIdle 确保息屏/低电量时也能准时触发
   static Future<void> scheduleLoop(int intervalMinutes) async {
     await cancelLoop();
     if (intervalMinutes <= 0) return;
@@ -31,6 +32,8 @@ class AlarmService {
       _loopAlarmCallback,
       rescheduleOnReboot: true,
       wakeup: true,
+      exact: true,
+      allowWhileIdle: true,
     );
   }
 
@@ -68,13 +71,14 @@ class AlarmService {
 }
 
 /// 循环提醒的顶层回调函数(必须为顶层,带 vm:entry-point 注解)
+/// 必须等待 onAlarmFired 完成(含飞书 HTTP 请求),否则后台 isolate 会提前结束导致飞书推送丢失
 @pragma('vm:entry-point')
-void _loopAlarmCallback(int id, Map<String, dynamic>? params) {
-  NotificationService.onAlarmFired(id);
+void _loopAlarmCallback(int id, Map<String, dynamic>? params) async {
+  await NotificationService.onAlarmFired(id);
 }
 
 /// 单次提醒的顶层回调函数
 @pragma('vm:entry-point')
-void _singleAlarmCallback(int id, Map<String, dynamic>? params) {
-  NotificationService.onAlarmFired(id);
+void _singleAlarmCallback(int id, Map<String, dynamic>? params) async {
+  await NotificationService.onAlarmFired(id);
 }

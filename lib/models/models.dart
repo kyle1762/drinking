@@ -9,9 +9,11 @@ enum AccountState {
 }
 
 /// 提醒音效
+/// 风铃音效已更换为 wind_chime.wav(更清脆悦耳)
+/// 请将新的风铃音频文件放入 assets/sounds/wind_chime.wav
 enum SoundType {
   flow('流水', 'flow.wav'),
-  windChime('风铃', 'wind.wav'),
+  windChime('风铃', 'wind_chime.wav'),
   rainDrop('雨滴', 'rain.wav'),
   piano('轻钢琴', 'piano.wav');
 

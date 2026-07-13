@@ -65,6 +65,10 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 喝水动画触发计数器 - 每次 addRecord 自增,小人组件监听此值触发喝水动画
+  int _drinkPulse = 0;
+  int get drinkPulse => _drinkPulse;
+
   /// 下次提醒时间
   String get nextReminderTime {
     if (!_reminderEnabled || _reminderPaused) return '已暂停';
@@ -488,6 +492,7 @@ class AppState extends ChangeNotifier {
           amount: amount,
         ));
     StorageService.saveRecords(_records);
+    _drinkPulse++;
     notifyListeners();
   }
 
@@ -501,6 +506,7 @@ class AppState extends ChangeNotifier {
     if (_records.isNotEmpty) {
       _records.removeAt(0);
       StorageService.saveRecords(_records);
+      _drinkPulse++;
       notifyListeners();
     }
   }
