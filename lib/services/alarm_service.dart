@@ -29,7 +29,7 @@ class AlarmService {
     await AndroidAlarmManager.periodic(
       Duration(minutes: intervalMinutes),
       loopAlarmId,
-      _loopAlarmCallback,
+      loopAlarmCallback,
       rescheduleOnReboot: true,
       wakeup: true,
       exact: true,
@@ -50,7 +50,7 @@ class AlarmService {
     await AndroidAlarmManager.oneShotAt(
       time,
       alarmId,
-      _singleAlarmCallback,
+      singleAlarmCallback,
       rescheduleOnReboot: true,
       wakeup: true,
     );
@@ -70,15 +70,15 @@ class AlarmService {
   }
 }
 
-/// 循环提醒的顶层回调函数(必须为顶层,带 vm:entry-point 注解)
-/// 必须等待 onAlarmFired 完成(含飞书 HTTP 请求),否则后台 isolate 会提前结束导致飞书推送丢失
+/// 循环提醒的顶层回调函数(必须为 public 顶层函数,带 vm:entry-point 注解)
+/// 私有函数(下划线开头)在 release 模式下会被 tree-shake 导致后台 isolate 找不到回调
 @pragma('vm:entry-point')
-void _loopAlarmCallback(int id, Map<String, dynamic>? params) async {
+void loopAlarmCallback(int id, Map<String, dynamic>? params) async {
   await NotificationService.onAlarmFired(id);
 }
 
 /// 单次提醒的顶层回调函数
 @pragma('vm:entry-point')
-void _singleAlarmCallback(int id, Map<String, dynamic>? params) async {
+void singleAlarmCallback(int id, Map<String, dynamic>? params) async {
   await NotificationService.onAlarmFired(id);
 }

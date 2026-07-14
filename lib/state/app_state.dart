@@ -90,7 +90,7 @@ class AppState extends ChangeNotifier {
 
   // ============ 飞书推送 ============
   bool _feishuPushEnabled = false;
-  String _feishuPushText = '该喝水啦,记得补充水分~';
+  String _feishuPushText = '到时间啦~ 起身动动,接杯水喝一口吧';
   bool _feishuPushOnReminder = true;
   bool _feishuPushOnPunch = false;
 

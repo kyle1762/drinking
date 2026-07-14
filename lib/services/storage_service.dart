@@ -71,7 +71,7 @@ class StorageService {
       sound: SoundType.fromName(p.getString(_kSound)),
       earphoneVolume: p.getDouble(_kEarphoneVolume) ?? 0.6,
       feishuPushEnabled: p.getBool(_kFeishuPushEnabled) ?? false,
-      feishuPushText: p.getString(_kFeishuPushText) ?? '该喝水啦,记得补充水分~',
+      feishuPushText: p.getString(_kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧',
       feishuPushOnReminder: p.getBool(_kFeishuPushOnReminder) ?? true,
       feishuPushOnPunch: p.getBool(_kFeishuPushOnPunch) ?? false,
       nightDnd: p.getBool(_kNightDnd) ?? true,
