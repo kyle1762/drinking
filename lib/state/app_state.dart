@@ -130,6 +130,46 @@ class AppState extends ChangeNotifier {
       (_profile.dailyGoal - todayTotal).clamp(0, _profile.dailyGoal);
   double get todayRate => todayTotal / _profile.dailyGoal.clamp(1, 99999);
 
+  // ============ AI 饮食/运动追踪 ============
+  final List<FoodRecord> _foodRecords = [];
+  final List<ExerciseRecord> _exerciseRecords = [];
+
+  List<FoodRecord> get foodRecords => List.unmodifiable(_foodRecords);
+  List<ExerciseRecord> get exerciseRecords => List.unmodifiable(_exerciseRecords);
+
+  /// 今日饮食记录
+  List<FoodRecord> get todayFoodRecords {
+    final now = DateTime.now();
+    return _foodRecords
+        .where((r) =>
+            r.time.year == now.year &&
+            r.time.month == now.month &&
+            r.time.day == now.day)
+        .toList();
+  }
+
+  /// 今日运动记录
+  List<ExerciseRecord> get todayExerciseRecords {
+    final now = DateTime.now();
+    return _exerciseRecords
+        .where((r) =>
+            r.time.year == now.year &&
+            r.time.month == now.month &&
+            r.time.day == now.day)
+        .toList();
+  }
+
+  /// 今日摄入热量 (kcal)
+  int get todayFoodCalories =>
+      todayFoodRecords.fold(0, (s, r) => s + r.calories);
+
+  /// 今日消耗热量 (kcal)
+  int get todayExerciseCalories =>
+      todayExerciseRecords.fold(0, (s, r) => s + r.calories);
+
+  /// 今日净摄入 (摄入 - 消耗)
+  int get todayNetCalories => todayFoodCalories - todayExerciseCalories;
+
   // ============ 同步至飞书打卡记忆 ============
   bool _rememberSyncToFeishu = true;
 
@@ -171,6 +211,12 @@ class AppState extends ChangeNotifier {
     _records
       ..clear()
       ..addAll(d.records.where((r) => r.time.isAfter(cutoff)));
+    _foodRecords
+      ..clear()
+      ..addAll(d.foodRecords.where((r) => r.time.isAfter(cutoff)));
+    _exerciseRecords
+      ..clear()
+      ..addAll(d.exerciseRecords.where((r) => r.time.isAfter(cutoff)));
   }
 
   // ===================== 动作 =====================
@@ -514,6 +560,36 @@ class AppState extends ChangeNotifier {
   void setRememberSyncFeishu(bool v) {
     _rememberSyncToFeishu = v;
     StorageService.saveRememberSyncFeishu(v);
+    notifyListeners();
+  }
+
+  // ---- 饮食/运动记录 ----
+  void addFoodRecord(FoodRecord record) {
+    _foodRecords.insert(0, record);
+    StorageService.saveFoodRecords(_foodRecords);
+    notifyListeners();
+  }
+
+  void removeFoodRecord(String id) {
+    _foodRecords.removeWhere((r) => r.id == id);
+    StorageService.saveFoodRecords(_foodRecords);
+    notifyListeners();
+  }
+
+  void addExerciseRecord(ExerciseRecord record) {
+    _exerciseRecords.insert(0, record);
+    StorageService.saveExerciseRecords(_exerciseRecords);
+    notifyListeners();
+  }
+
+  void removeExerciseRecord(String id) {
+    _exerciseRecords.removeWhere((r) => r.id == id);
+    StorageService.saveExerciseRecords(_exerciseRecords);
+    notifyListeners();
+  }
+
+  /// 强制刷新 AI 相关数据(API Key 变更后调用)
+  void refreshAiData() {
     notifyListeners();
   }
 

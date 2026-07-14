@@ -45,6 +45,9 @@ dependencies:
   # URL 启动(唤起飞书 App 处理 lark:// scheme)
   url_launcher: ^6.3.0
 
+  # 图片选择(相机/相册)
+  image_picker: ^1.0.4
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

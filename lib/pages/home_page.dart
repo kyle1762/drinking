@@ -9,6 +9,7 @@ import '../services/alarm_service.dart';
 import '../state/app_state.dart';
 import 'reminder/reminder_page.dart';
 import 'account/account_page.dart';
+import 'ai/ai_recognition_page.dart';
 
 const _kTabs = <_TabItem>[
   _TabItem(
@@ -16,10 +17,14 @@ const _kTabs = <_TabItem>[
       label: '喝水提醒',
       page: ReminderPage()),
   _TabItem(
+      icon: Icons.analytics_outlined,
+      label: 'AI 追踪',
+      page: AiRecognitionPage()),
+  _TabItem(
       icon: Icons.person_outline_rounded, label: '账号&飞书', page: AccountPage()),
 ];
 
-/// 首页 - 两Tab结构(提醒设置+统计已合并)
+/// 首页 - 三Tab结构(喝水提醒 / AI追踪 / 账号&飞书)
 /// 安卓返回键逻辑:
 /// 1. 弹窗状态下返回:关闭弹窗(Flutter自动处理)
 /// 2. 非首个Tab:回到上一个Tab

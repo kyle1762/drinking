@@ -139,3 +139,101 @@ class UserProfile {
     );
   }
 }
+
+/// AI 识别类型
+enum AiRecognitionType { food, exercise }
+
+/// AI 识别结果(由 AI 接口返回)
+class AiRecognitionResult {
+  final AiRecognitionType type;
+  final String name;
+  final double value; // 食物: kcal/100g; 运动: kcal/分钟
+  final double confidence; // 0~1 信心度
+  final String? imagePath; // 本地图片路径
+
+  const AiRecognitionResult({
+    required this.type,
+    required this.name,
+    required this.value,
+    required this.confidence,
+    this.imagePath,
+  });
+}
+
+/// 饮食记录
+class FoodRecord {
+  final String id;
+  final DateTime time;
+  final String name;
+  final int calories; // 总热量 kcal
+  final int grams; // 克数
+  final String? imagePath;
+
+  FoodRecord({
+    required this.id,
+    required this.time,
+    required this.name,
+    required this.calories,
+    required this.grams,
+    this.imagePath,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'time': time.toIso8601String(),
+        'name': name,
+        'calories': calories,
+        'grams': grams,
+        'imagePath': imagePath,
+      };
+
+  factory FoodRecord.fromJson(Map<String, dynamic> json) {
+    return FoodRecord(
+      id: json['id'] as String,
+      time: DateTime.parse(json['time'] as String),
+      name: json['name'] as String,
+      calories: (json['calories'] as num).toInt(),
+      grams: (json['grams'] as num).toInt(),
+      imagePath: json['imagePath'] as String?,
+    );
+  }
+}
+
+/// 运动记录
+class ExerciseRecord {
+  final String id;
+  final DateTime time;
+  final String name;
+  final int calories; // 总消耗 kcal
+  final int minutes; // 分钟数
+  final String? imagePath;
+
+  ExerciseRecord({
+    required this.id,
+    required this.time,
+    required this.name,
+    required this.calories,
+    required this.minutes,
+    this.imagePath,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'time': time.toIso8601String(),
+        'name': name,
+        'calories': calories,
+        'minutes': minutes,
+        'imagePath': imagePath,
+      };
+
+  factory ExerciseRecord.fromJson(Map<String, dynamic> json) {
+    return ExerciseRecord(
+      id: json['id'] as String,
+      time: DateTime.parse(json['time'] as String),
+      name: json['name'] as String,
+      calories: (json['calories'] as num).toInt(),
+      minutes: (json['minutes'] as num).toInt(),
+      imagePath: json['imagePath'] as String?,
+    );
+  }
+}

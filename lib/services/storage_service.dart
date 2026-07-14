@@ -46,6 +46,9 @@ class StorageService {
   static const _kNoonDnd = 'noonDnd';
   static const _kRememberSyncFeishu = 'rememberSyncFeishu';
   static const _kRecords = 'records';
+  static const _kAiApiKey = 'aiApiKey';
+  static const _kFoodRecords = 'foodRecords';
+  static const _kExerciseRecords = 'exerciseRecords';
 
   // ============ 加载全部 ============
   /// 从磁盘读取全部状态,返回一个 Map,供 AppState.bootstrap 使用
@@ -78,6 +81,9 @@ class StorageService {
       noonDnd: p.getBool(_kNoonDnd) ?? true,
       rememberSyncFeishu: p.getBool(_kRememberSyncFeishu) ?? true,
       records: _loadRecords(),
+      aiApiKey: p.getString(_kAiApiKey) ?? '',
+      foodRecords: _loadFoodRecords(),
+      exerciseRecords: _loadExerciseRecords(),
     );
   }
 
@@ -111,6 +117,32 @@ class StorageService {
       final list = jsonDecode(s) as List;
       return list
           .map((e) => WaterRecord.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static List<FoodRecord> _loadFoodRecords() {
+    final s = _p.getString(_kFoodRecords);
+    if (s == null) return [];
+    try {
+      final list = jsonDecode(s) as List;
+      return list
+          .map((e) => FoodRecord.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static List<ExerciseRecord> _loadExerciseRecords() {
+    final s = _p.getString(_kExerciseRecords);
+    if (s == null) return [];
+    try {
+      final list = jsonDecode(s) as List;
+      return list
+          .map((e) => ExerciseRecord.fromJson(e as Map<String, dynamic>))
           .toList();
     } catch (_) {
       return [];
@@ -161,6 +193,12 @@ class StorageService {
   static Future<void> saveRecords(List<WaterRecord> list) =>
       _p.setString(_kRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
 
+  static Future<void> saveAiApiKey(String v) => _p.setString(_kAiApiKey, v);
+  static Future<void> saveFoodRecords(List<FoodRecord> list) =>
+      _p.setString(_kFoodRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
+  static Future<void> saveExerciseRecords(List<ExerciseRecord> list) =>
+      _p.setString(_kExerciseRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
+
   /// 清空所有持久化数据(退出登录且不保留本地数据时调用)
   static Future<void> clearAll() async {
     final keys = [
@@ -170,6 +208,7 @@ class StorageService {
       _kEarphoneEnabled, _kSound, _kEarphoneVolume,
       _kFeishuPushEnabled, _kFeishuPushText, _kFeishuPushOnReminder, _kFeishuPushOnPunch,
       _kNightDnd, _kNoonDnd, _kRememberSyncFeishu, _kRecords,
+      _kAiApiKey, _kFoodRecords, _kExerciseRecords,
     ];
     for (final k in keys) {
       await _p.remove(k);
@@ -205,6 +244,9 @@ class StoredData {
   final bool noonDnd;
   final bool rememberSyncFeishu;
   final List<WaterRecord> records;
+  final String aiApiKey;
+  final List<FoodRecord> foodRecords;
+  final List<ExerciseRecord> exerciseRecords;
 
   const StoredData({
     required this.accountStateIndex,
@@ -233,5 +275,8 @@ class StoredData {
     required this.noonDnd,
     required this.rememberSyncFeishu,
     required this.records,
+    required this.aiApiKey,
+    required this.foodRecords,
+    required this.exerciseRecords,
   });
 }
