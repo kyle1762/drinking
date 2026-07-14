@@ -138,6 +138,30 @@ class NotificationService {
     debugPrint('[AlarmFired] 提醒流程完成');
   }
 
+  /// 测试提醒:跳过所有条件检查,直接执行通知+音效+飞书推送
+  /// 用于验证闹钟机制是否正常工作
+  @pragma('vm:entry-point')
+  static Future<void> onTestAlarmFired() async {
+    debugPrint('[TestAlarm] 测试闹钟触发, time=${DateTime.now()}');
+    try {
+      WidgetsFlutterBinding.ensureInitialized();
+    } catch (_) {}
+    await init();
+    await showReminder(
+      title: '测试提醒',
+      body: '闹钟机制正常工作! ${DateTime.now().toString().substring(11, 19)}',
+    );
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(_kEarphoneEnabled) ?? true) {
+      final soundName = prefs.getString(_kSound);
+      final sound = SoundType.fromName(soundName);
+      final volume = prefs.getDouble(_kEarphoneVolume) ?? 0.6;
+      await AudioService.playFromBackground(sound, volume: volume);
+    }
+    await FeishuService.pushReminderFromBackground();
+    debugPrint('[TestAlarm] 测试提醒流程完成');
+  }
+
   /// 检查当前是否处于免打扰时段
   static bool _isInDndPeriod(SharedPreferences prefs) {
     final nightDnd = prefs.getBool(_kNightDnd) ?? true;

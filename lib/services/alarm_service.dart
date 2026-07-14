@@ -80,6 +80,18 @@ class AlarmService {
     await AndroidAlarmManager.cancel(alarmId);
   }
 
+  /// 测试提醒:5秒后触发一次闹钟,用于验证闹钟机制是否正常
+  static Future<void> scheduleTest() async {
+    await AndroidAlarmManager.oneShot(
+      const Duration(seconds: 5),
+      999,
+      testAlarmCallback,
+      wakeup: true,
+      exact: true,
+      allowWhileIdle: true,
+    );
+  }
+
   /// 取消所有提醒
   static Future<void> cancelAll(List<int> singleIds) async {
     await cancelLoop();
@@ -102,4 +114,10 @@ void loopAlarmCallback(int id, Map<String, dynamic>? params) async {
 @pragma('vm:entry-point')
 void singleAlarmCallback(int id, Map<String, dynamic>? params) async {
   await NotificationService.onAlarmFired(id);
+}
+
+/// 测试提醒的顶层回调函数(跳过时段/免打扰检查,直接执行提醒)
+@pragma('vm:entry-point')
+void testAlarmCallback(int id, Map<String, dynamic>? params) async {
+  await NotificationService.onTestAlarmFired();
 }

@@ -193,21 +193,22 @@ class _LoopReminder extends StatelessWidget {
                     fontSize: 14,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
+            Row(
               children: _quick.map((m) {
                 final selected = s.loopInterval == m;
-                return _Chip(
-                  label: '$m分钟',
-                  selected: selected,
-                  onTap: () {
-                    s.setLoopInterval(m);
-                    if (s.reminderEnabled &&
-                        s.notificationGranted &&
-                        !s.reminderPaused) {
-                      AlarmService.scheduleLoop(m);
-                    }
-                  },
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _Chip(
+                      label: '$m分钟',
+                      selected: selected,
+                      onTap: () {
+                        s.setLoopInterval(m);
+                        // 无条件注册闹钟,即使通知权限未授权也要让闹钟触发(音效+飞书仍可执行)
+                        AlarmService.scheduleLoop(m);
+                      },
+                    ),
+                  ),
                 );
               }).toList(),
             ),
@@ -251,11 +252,7 @@ class _LoopReminder extends StatelessWidget {
                     value: s.loopInterval.toDouble().clamp(1, 240),
                     onChanged: (v) => s.setLoopInterval(v.round()),
                     onChangeEnd: (v) {
-                      if (s.reminderEnabled &&
-                          s.notificationGranted &&
-                          !s.reminderPaused) {
-                        AlarmService.scheduleLoop(v.round());
-                      }
+                      AlarmService.scheduleLoop(v.round());
                     },
                   ),
                 ),
@@ -267,6 +264,30 @@ class _LoopReminder extends StatelessWidget {
             ),
             const Text('滑动调整 1~240 分钟,或点击 ±5 分钟微调',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            const SizedBox(height: 16),
+            // 测试提醒按钮:5秒后触发一次闹钟,用于验证闹钟机制是否正常
+            SizedBox(
+              width: double.infinity,
+              child: RippleButton(
+                onTap: () {
+                  AlarmService.scheduleTest();
+                },
+                borderRadius: AppThemeRadius.s,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.mint,
+                    borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text('测试提醒 (5秒后触发)',
+                      style: TextStyle(
+                          color: AppColors.mintDeep,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -294,9 +315,7 @@ class _LoopReminder extends StatelessWidget {
   void _adjustInterval(AppState s, int delta) {
     final newInterval = (s.loopInterval + delta).clamp(1, 240);
     s.setLoopInterval(newInterval);
-    if (s.reminderEnabled && s.notificationGranted && !s.reminderPaused) {
-      AlarmService.scheduleLoop(newInterval);
-    }
+    AlarmService.scheduleLoop(newInterval);
   }
 }
 
@@ -523,22 +542,12 @@ class _BottomActions extends StatelessWidget {
             child: RippleButton(
               onTap: () async {
                 final s = context.read<AppState>();
-                final ok = s.reminderEnabled &&
-                    s.notificationGranted &&
-                    !s.reminderPaused;
+                final ok = s.reminderEnabled && !s.reminderPaused;
                 if (ok) {
-                  // 注册循环提醒
                   await AlarmService.scheduleLoop(s.loopInterval);
                 } else {
-                  // 暂停或未授权时取消循环闹钟
                   await AlarmService.cancelLoop();
                 }
-                if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                      content:
-                          Text(ok ? '设置已保存,后台定时已生效' : '提醒已暂停或未授权通知,定时已取消')),
-                );
               },
               borderRadius: AppThemeRadius.m,
               child: Container(
@@ -562,14 +571,9 @@ class _BottomActions extends StatelessWidget {
               s.togglePauseToday();
               if (s.reminderPaused) {
                 await AlarmService.cancelLoop();
-              } else if (s.reminderEnabled && s.notificationGranted) {
+              } else {
                 await AlarmService.scheduleLoop(s.loopInterval);
               }
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                    content: Text(s.reminderPaused ? '今日提醒已暂停' : '今日提醒已恢复')),
-              );
             },
             borderRadius: AppThemeRadius.m,
             child: Container(

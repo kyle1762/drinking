@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../theme/app_colors.dart';
 import '../services/notification_service.dart';
 import '../services/alarm_service.dart';
@@ -39,6 +40,20 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     // 首次启动时弹窗提醒开启通知权限
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstLaunchNotification());
+    // 请求忽略电池优化(防止国产ROM杀死后台闹钟)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _requestIgnoreBatteryOptimization());
+  }
+
+  /// 请求忽略电池优化,确保后台闹钟能准时触发
+  Future<void> _requestIgnoreBatteryOptimization() async {
+    try {
+      final status = await Permission.ignoreBatteryOptimizations.status;
+      if (status.isDenied) {
+        await Permission.ignoreBatteryOptimizations.request();
+      }
+    } catch (_) {
+      // 部分设备不支持,忽略
+    }
   }
 
   /// 首次启动检查:若未弹过通知权限提醒且未授权,弹窗引导

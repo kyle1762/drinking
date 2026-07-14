@@ -245,31 +245,34 @@ class _RainPainter extends CustomPainter {
   bool shouldRepaint(covariant _RainPainter old) => true;
 }
 
-/// 快速喝水按键 - 抿一口/喝小口/大口喝/自定义 四按钮
+/// 快速喝水按键 - 抿一口/喝小口/大口喝/自定义 四按钮并排一排
 class _QuickPunchButtons extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    return Wrap(
-      spacing: 10,
+    return Row(
       children: [
-        _punchBtn('抿一口', () => s.addRecord(10)),
-        _punchBtn('喝小口', () => s.addRecord(50)),
-        _punchBtn('大口喝', () => s.addRecord(200)),
-        _punchBtn('自定义', () => _customAmount(context, s)),
+        Expanded(child: _punchBtn(context, '抿一口', () => s.addRecord(10))),
+        const SizedBox(width: 8),
+        Expanded(child: _punchBtn(context, '喝小口', () => s.addRecord(50))),
+        const SizedBox(width: 8),
+        Expanded(child: _punchBtn(context, '大口喝', () => s.addRecord(200))),
+        const SizedBox(width: 8),
+        Expanded(child: _punchBtn(context, '自定义', () => _customAmount(context, s))),
       ],
     );
   }
 
-  Widget _punchBtn(String label, VoidCallback onTap) {
+  Widget _punchBtn(BuildContext context, String label, VoidCallback onTap) {
     return Material(
       color: AppColors.softBlue,
       borderRadius: BorderRadius.circular(AppThemeRadius.s),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(AppThemeRadius.s),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          alignment: Alignment.center,
           child: Text(label,
               style: const TextStyle(
                   color: AppColors.softBlueDeep,
