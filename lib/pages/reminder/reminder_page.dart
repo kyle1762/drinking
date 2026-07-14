@@ -7,6 +7,7 @@ import '../../widgets/common.dart';
 import '../../dialogs.dart';
 import '../../services/alarm_service.dart';
 import '../../services/audio_service.dart';
+import '../../services/notification_service.dart';
 import '../stats/stats_page.dart';
 
 class ReminderPage extends StatelessWidget {
@@ -266,12 +267,12 @@ class _LoopReminder extends StatelessWidget {
             const Text('滑动调整 1~240 分钟,或点击 ±5 分钟微调',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
             const SizedBox(height: 16),
-            // 测试提醒按钮:5秒后触发一次闹钟,用于验证闹钟机制是否正常
+            // 立即测试:直接触发通知+音效+飞书(不经过闹钟调度)
             SizedBox(
               width: double.infinity,
               child: RippleButton(
-                onTap: () {
-                  AlarmService.scheduleTest();
+                onTap: () async {
+                  await NotificationService.onTestAlarmFired();
                 },
                 borderRadius: AppThemeRadius.s,
                 child: Container(
@@ -281,9 +282,38 @@ class _LoopReminder extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppThemeRadius.s),
                   ),
                   alignment: Alignment.center,
-                  child: const Text('测试提醒 (5秒后触发)',
+                  child: const Text('立即测试提醒 (通知+音效+飞书)',
                       style: TextStyle(
                           color: AppColors.mintDeep,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // 闹钟测试:5秒后通过闹钟调度触发(验证闹钟机制)
+            SizedBox(
+              width: double.infinity,
+              child: RippleButton(
+                onTap: () async {
+                  try {
+                    final ok = await AlarmService.scheduleTest();
+                    debugPrint('[TestBtn] scheduleTest 返回: $ok');
+                  } catch (e) {
+                    debugPrint('[TestBtn] scheduleTest 异常: $e');
+                  }
+                },
+                borderRadius: AppThemeRadius.s,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.softBlue,
+                    borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text('闹钟测试 (5秒后触发)',
+                      style: TextStyle(
+                          color: AppColors.softBlueDeep,
                           fontSize: 13,
                           fontWeight: FontWeight.w600)),
                 ),
