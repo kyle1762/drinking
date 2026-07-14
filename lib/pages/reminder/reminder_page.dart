@@ -5,7 +5,6 @@ import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
 import '../../dialogs.dart';
-import '../../services/notification_service.dart';
 import '../../services/alarm_service.dart';
 import '../../services/audio_service.dart';
 import '../stats/stats_page.dart';
@@ -15,28 +14,12 @@ class ReminderPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
     return Scaffold(
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.only(bottom: 120),
           children: [
             _SplitHeader(),
-            if (!s.notificationGranted)
-              SoftBanner(
-                icon: Icons.notifications_none_rounded,
-                text: '开启通知权限,才能温柔地提醒你喝水',
-                actionText: '去开启',
-                onAction: () => _requestNotification(context),
-              ),
-            if (s.isGuest)
-              SoftBanner(
-                icon: Icons.cloud_off_outlined,
-                text: '游客模式下数据仅保存在本地,登录后可云端同步',
-                actionText: '去登录',
-                onAction: () => _goAccount(context),
-              ),
-            const CloudProgressCard(),
             const PunchButton(),
             const SizedBox(height: 8),
             const RecordList(),
@@ -50,68 +33,62 @@ class ReminderPage extends StatelessWidget {
       ),
     );
   }
-
-  Future<void> _requestNotification(BuildContext context) async {
-    final s = context.read<AppState>();
-    final granted = await NotificationService.requestPermission();
-    s.setNotificationGranted(granted);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text(granted ? '通知权限已开启,温柔提醒已就绪' : '通知权限被拒绝,请在系统设置中开启')),
-    );
-    // 授权后立即注册循环提醒
-    if (granted && s.reminderEnabled && !s.reminderPaused) {
-      await AlarmService.scheduleLoop(s.loopInterval);
-    }
-  }
-
-  void _goAccount(BuildContext context) {
-    // 引导跳转账号页(通过底部Tab切换,这里仅提示)
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('请点击底部「账号&飞书」登录')),
-    );
-  }
 }
 
-/// 顶部标题状态栏 - 今日提醒概览卡片
+/// 顶部 - 今日概览(左) + 云朵图像(右),各占一半
 class _SplitHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: CreamCard(
-        color: AppColors.softBlue,
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.water_drop_outlined,
-                    size: 18, color: AppColors.softBlueDeep),
-                const SizedBox(width: 6),
-                const Expanded(
-                  child: Text('今日提醒概览',
-                      style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700)),
-                ),
-                StatusTag(
-                  text: s.reminderPaused
-                      ? '已暂停'
-                      : (s.reminderEnabled ? '提醒中' : '已暂停'),
-                  active: s.reminderEnabled && !s.reminderPaused,
-                ),
-              ],
+          // 左:今日概览
+          Expanded(
+            child: CreamCard(
+              color: AppColors.softBlue,
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.water_drop_outlined,
+                          size: 16, color: AppColors.softBlueDeep),
+                      const SizedBox(width: 4),
+                      const Expanded(
+                        child: Text('今日概览',
+                            style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700)),
+                      ),
+                      StatusTag(
+                        text: s.reminderPaused
+                            ? '已暂停'
+                            : (s.reminderEnabled ? '提醒中' : '已暂停'),
+                        active: s.reminderEnabled && !s.reminderPaused,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _overviewItem('下次提醒', s.nextReminderTime),
+                  _overviewItem('当前间隔', '${s.loopInterval} 分钟'),
+                  _overviewItem('今日已提醒', '${s.todayReminderCount} 次'),
+                ],
+              ),
             ),
-            const SizedBox(height: 10),
-            _overviewItem('下次提醒', s.nextReminderTime),
-            _overviewItem('当前间隔', '${s.loopInterval} 分钟'),
-            _overviewItem('今日已提醒', '${s.todayReminderCount} 次'),
-          ],
+          ),
+          const SizedBox(width: 10),
+          // 右:云朵图像
+          Expanded(
+            child: _CloudCard(),
+          ),
+        ],
         ),
       ),
     );
@@ -119,18 +96,61 @@ class _SplitHeader extends StatelessWidget {
 
   Widget _overviewItem(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
           Text(label,
               style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 12)),
-          const SizedBox(width: 8),
-          Text(value,
+                  color: AppColors.textSecondary, fontSize: 11)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(value,
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                    color: AppColors.softBlueDeep,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 云朵图像卡片 - 显示今日饮水进度(云朵+总量/目标)
+class _CloudCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    final rate = s.todayRate.clamp(0.0, 1.0);
+    return CreamCard(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Center(
+              child: CustomPaint(
+                size: const Size(120, 80),
+                painter: CloudPainter(rate),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text('${s.todayTotal}',
               style: const TextStyle(
-                  color: AppColors.softBlueDeep,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700)),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.softBlueDeep)),
+          Text('/ ${s.todayGoal} ml',
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 11)),
+          const SizedBox(height: 2),
+          Text('${(rate * 100).round()}%',
+              style: const TextStyle(
+                  color: AppColors.mintDeep,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
         ],
       ),
     );

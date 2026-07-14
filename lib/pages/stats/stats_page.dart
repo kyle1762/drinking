@@ -35,7 +35,7 @@ class CloudProgressCard extends StatelessWidget {
                     top: 20,
                     child: CustomPaint(
                       size: const Size(220, 140),
-                      painter: _CloudPainter(rate),
+                      painter: CloudPainter(rate),
                     ),
                   ),
                   // 数据
@@ -146,8 +146,8 @@ class CloudProgressCard extends StatelessWidget {
   }
 }
 
-class _CloudPainter extends CustomPainter {
-  _CloudPainter(this.rate);
+class CloudPainter extends CustomPainter {
+  CloudPainter(this.rate);
   final double rate;
 
   @override
@@ -184,7 +184,7 @@ class _CloudPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _CloudPainter old) => old.rate != rate;
+  bool shouldRepaint(covariant CloudPainter old) => old.rate != rate;
 }
 
 /// 100% 触发的雨滴动画

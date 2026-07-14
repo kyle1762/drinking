@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_colors.dart';
+import '../services/notification_service.dart';
+import '../services/alarm_service.dart';
+import '../state/app_state.dart';
 import 'reminder/reminder_page.dart';
 import 'account/account_page.dart';
 
@@ -28,6 +33,49 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _index = 0;
   DateTime? _lastBackPressed;
+
+  @override
+  void initState() {
+    super.initState();
+    // 首次启动时弹窗提醒开启通知权限
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstLaunchNotification());
+  }
+
+  /// 首次启动检查:若未弹过通知权限提醒且未授权,弹窗引导
+  Future<void> _checkFirstLaunchNotification() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasPrompted = prefs.getBool('hasPromptedNotification') ?? false;
+    if (hasPrompted) return;
+    // 标记已弹过(无论用户选择)
+    await prefs.setBool('hasPromptedNotification', true);
+    if (!mounted) return;
+    final s = context.read<AppState>();
+    if (s.notificationGranted) return;
+    // 弹窗引导
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('开启喝水提醒', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        content: const Text('需要开启通知权限,才能在后台温柔地提醒你喝水哦~', style: TextStyle(fontSize: 14, height: 1.5)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('稍后')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('去开启')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      final granted = await NotificationService.requestPermission();
+      s.setNotificationGranted(granted);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(granted ? '通知权限已开启,温柔提醒已就绪' : '通知权限被拒绝,可在系统设置中开启')),
+      );
+      if (granted && s.reminderEnabled && !s.reminderPaused) {
+        await AlarmService.scheduleLoop(s.loopInterval);
+      }
+    }
+  }
 
   Future<bool> _onWillPop() async {
     // 弹窗打开时由系统处理关闭
