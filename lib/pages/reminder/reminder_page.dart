@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/models.dart';
@@ -75,63 +74,43 @@ class ReminderPage extends StatelessWidget {
   }
 }
 
-/// 顶部标题状态栏
-/// 头部左右分栏 - 左:今日提醒概览卡片,右:空心小人(水位随今日饮水率填充)
+/// 顶部标题状态栏 - 今日提醒概览卡片
 class _SplitHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: AspectRatio(
-        aspectRatio: 1.35, // 给 Row 有界高度,避免无界高度下 CustomPaint 崩溃
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: CreamCard(
+        color: AppColors.softBlue,
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 左:概览卡片
-            Expanded(
-              flex: 2,
-              child: CreamCard(
-                color: AppColors.softBlue,
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.water_drop_outlined,
-                            size: 18, color: AppColors.softBlueDeep),
-                        const SizedBox(width: 6),
-                        const Expanded(
-                          child: Text('今日提醒概览',
-                              style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700)),
-                        ),
-                        StatusTag(
-                          text: s.reminderPaused
-                              ? '已暂停'
-                              : (s.reminderEnabled ? '提醒中' : '已暂停'),
-                          active: s.reminderEnabled && !s.reminderPaused,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    _overviewItem('下次提醒', s.nextReminderTime),
-                    _overviewItem('当前间隔', '${s.loopInterval} 分钟'),
-                    _overviewItem('今日已提醒', '${s.todayReminderCount} 次'),
-                  ],
+            Row(
+              children: [
+                const Icon(Icons.water_drop_outlined,
+                    size: 18, color: AppColors.softBlueDeep),
+                const SizedBox(width: 6),
+                const Expanded(
+                  child: Text('今日提醒概览',
+                      style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700)),
                 ),
-              ),
+                StatusTag(
+                  text: s.reminderPaused
+                      ? '已暂停'
+                      : (s.reminderEnabled ? '提醒中' : '已暂停'),
+                  active: s.reminderEnabled && !s.reminderPaused,
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            // 右:空心小人容器(占据主要高度)
-            Expanded(
-              flex: 3,
-              child: _FigureWidget(),
-            ),
+            const SizedBox(height: 10),
+            _overviewItem('下次提醒', s.nextReminderTime),
+            _overviewItem('当前间隔', '${s.loopInterval} 分钟'),
+            _overviewItem('今日已提醒', '${s.todayReminderCount} 次'),
           ],
         ),
       ),
@@ -156,236 +135,6 @@ class _SplitHeader extends StatelessWidget {
       ),
     );
   }
-}
-
-/// 空心小人 - 黑色轮廓,内部水位随今日饮水率(rate)从脚部向上填充
-/// 点击喝水按键时触发仰头喝水动画 + 水位补间动画
-class _FigureWidget extends StatefulWidget {
-  @override
-  State<_FigureWidget> createState() => _FigureWidgetState();
-}
-
-class _FigureWidgetState extends State<_FigureWidget>
-    with TickerProviderStateMixin {
-  late final AnimationController _waterCtl; // 水位补间
-  late final AnimationController _tiltCtl; // 仰头喝水
-  late Animation<double> _waterAnim;
-  late final Animation<double> _tiltAnim;
-  double _displayedRate = 0;
-  int _lastPulse = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    final s = context.read<AppState>();
-    _displayedRate = s.todayRate.clamp(0.0, 1.0);
-    _lastPulse = s.drinkPulse;
-    _waterCtl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 700));
-    _waterAnim = ConstantTween(_displayedRate).animate(_waterCtl);
-    _tiltCtl = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 850));
-    // 0 -> -0.55(仰头) -> 0
-    _tiltAnim = TweenSequence<double>([
-      TweenSequenceItem(
-          tween: Tween<double>(begin: 0.0, end: -0.55)
-              .chain(CurveTween(curve: Curves.easeOutCubic)),
-          weight: 45),
-      TweenSequenceItem(
-          tween: Tween<double>(begin: -0.55, end: 0.0)
-              .chain(CurveTween(curve: Curves.easeInOut)),
-          weight: 55),
-    ]).animate(_tiltCtl)
-      ..addListener(() {
-        if (mounted) setState(() {});
-      });
-  }
-
-  @override
-  void dispose() {
-    _waterCtl.dispose();
-    _tiltCtl.dispose();
-    super.dispose();
-  }
-
-  void _onPulseChanged(int pulse, double targetRate) {
-    if (pulse != _lastPulse) {
-      _lastPulse = pulse;
-      // 触发仰头喝水动画
-      _tiltCtl.forward(from: 0);
-    }
-    // 水位补间到新值
-    if ((targetRate - _displayedRate).abs() > 0.001) {
-      final oldRate = _displayedRate;
-      _waterCtl.reset();
-      _waterAnim = Tween<double>(begin: oldRate, end: targetRate.clamp(0.0, 1.0))
-          .animate(CurvedAnimation(
-              parent: _waterCtl, curve: Curves.easeOutCubic))
-        ..addListener(() {
-          if (mounted) setState(() => _displayedRate = _waterAnim.value);
-        });
-      _waterCtl.forward();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    final targetRate = s.todayRate.clamp(0.0, 1.0);
-    // 监听 pulse 变化触发动画
-    if (s.drinkPulse != _lastPulse ||
-        (targetRate - _displayedRate).abs() > 0.001 && !_waterCtl.isAnimating) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _onPulseChanged(s.drinkPulse, targetRate);
-      });
-    }
-    return CreamCard(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      child: ClipRect(
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: _FigurePainter(
-            rate: _displayedRate,
-            tiltAngle: _tiltCtl.isAnimating ? _tiltAnim.value : 0.0,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 空心小人绘制器 - 成年人侧面剪影(面朝左),双手举杯喝水
-/// 极简线条画:空心轮廓,无面部细节/无发型/无服装褶皱
-/// 躯干内部裁剪并从脚部填充淡蓝水位,高度对应今日饮水率
-class _FigurePainter extends CustomPainter {
-  _FigurePainter({required this.rate, required this.tiltAngle});
-  final double rate; // 0~1 今日饮水率
-  final double tiltAngle; // 头部仰头角度(弧度)
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final w = size.width, h = size.height;
-    final outlinePaint = Paint()
-      ..color = AppColors.textPrimary
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.4
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-    final waterPaint = Paint()..color = AppColors.softBlueDeep;
-
-    // 躯干区域(侧面剪影的躯干,作为水位容器)
-    final bodyRect = RRect.fromRectAndRadius(
-      Rect.fromLTRB(w * 0.34, h * 0.30, w * 0.62, h * 0.72),
-      Radius.circular(w * 0.08),
-    );
-    final bodyBounds = bodyRect.outerRect;
-
-    // ---- 1. 躯干水位填充(裁剪到躯干内部) ----
-    final fillH = bodyBounds.height * rate;
-    canvas.save();
-    canvas.clipRRect(bodyRect);
-    final waterTop = bodyBounds.bottom - fillH;
-    canvas.drawRect(
-      Rect.fromLTRB(bodyBounds.left, waterTop, bodyBounds.right, bodyBounds.bottom),
-      waterPaint,
-    );
-    // 水位顶部波浪
-    if (rate > 0.001 && rate < 0.999) {
-      final wavePaint = Paint()
-        ..color = AppColors.softBlueDeep
-        ..style = PaintingStyle.fill;
-      final path = Path();
-      const waveAmp = 3.0;
-      path.moveTo(bodyBounds.left, waterTop + waveAmp);
-      for (double x = bodyBounds.left; x <= bodyBounds.right; x += 4) {
-        final y = waterTop +
-            waveAmp * 0.6 * math.sin((x - bodyBounds.left) * 0.18);
-        path.lineTo(x, y);
-      }
-      path.lineTo(bodyBounds.right, waterTop + waveAmp);
-      path.lineTo(bodyBounds.right, bodyBounds.bottom);
-      path.lineTo(bodyBounds.left, bodyBounds.bottom);
-      path.close();
-      canvas.drawPath(path, wavePaint);
-    }
-    canvas.restore();
-
-    // ---- 2. 躯干轮廓 ----
-    canvas.drawRRect(bodyRect, outlinePaint);
-
-    // ---- 3. 腿(侧面,一前一后,直立) ----
-    final legTopY = bodyBounds.bottom;
-    // 前腿(左侧)
-    canvas.drawLine(Offset(w * 0.42, legTopY), Offset(w * 0.38, h * 0.92),
-        outlinePaint);
-    // 后腿(右侧)
-    canvas.drawLine(Offset(w * 0.54, legTopY), Offset(w * 0.58, h * 0.92),
-        outlinePaint);
-
-    // ---- 4. 头部+颈部(侧面朝左,无面部细节,应用仰头旋转) ----
-    final neckBase = Offset(w * 0.46, bodyBounds.top);
-    final headCenter = Offset(w * 0.40, bodyBounds.top - h * 0.10);
-    final headRadius = w * 0.11;
-    canvas.save();
-    canvas.translate(neckBase.dx, neckBase.dy);
-    // 面朝左时,仰头=顺时针(正角度),tiltAngle 为负值故取反
-    canvas.rotate(-tiltAngle);
-    canvas.translate(-neckBase.dx, -neckBase.dy);
-    // 颈
-    canvas.drawLine(neckBase,
-        Offset(headCenter.dx, headCenter.dy + headRadius * 0.7), outlinePaint);
-    // 头(空心圆,无面部细节)
-    canvas.drawCircle(headCenter, headRadius, outlinePaint);
-    canvas.restore();
-
-    // ---- 5. 手臂(双手举杯,弯曲向上贴近嘴部) ----
-    // 嘴部位置(头部左下方,无五官但杯子贴近此处)
-    final mouthPos = Offset(headCenter.dx - headRadius * 0.7,
-        headCenter.dy + headRadius * 0.2);
-    // 杯子中心(在嘴部左前方)
-    final cupCenter = Offset(mouthPos.dx - w * 0.02, mouthPos.dy);
-    // 前臂(左肩 -> 手肘 -> 杯子底部)
-    final shoulderFront = Offset(bodyBounds.left, bodyBounds.top + bodyBounds.height * 0.18);
-    final elbowFront = Offset(w * 0.26, bodyBounds.top + bodyBounds.height * 0.30);
-    canvas.drawLine(shoulderFront, elbowFront, outlinePaint);
-    canvas.drawLine(elbowFront, Offset(cupCenter.dx - w * 0.02, cupCenter.dy + h * 0.03),
-        outlinePaint);
-    // 后臂(右肩 -> 手肘 -> 杯子底部)
-    final shoulderBack = Offset(bodyBounds.right, bodyBounds.top + bodyBounds.height * 0.18);
-    final elbowBack = Offset(w * 0.34, bodyBounds.top + bodyBounds.height * 0.22);
-    canvas.drawLine(shoulderBack, elbowBack, outlinePaint);
-    canvas.drawLine(elbowBack, Offset(cupCenter.dx + w * 0.02, cupCenter.dy + h * 0.03),
-        outlinePaint);
-
-    // ---- 6. 杯子(贴近嘴部,极简梯形轮廓) ----
-    final cupPath = Path()
-      ..moveTo(cupCenter.dx - w * 0.04, cupCenter.dy - h * 0.01)
-      ..lineTo(cupCenter.dx + w * 0.04, cupCenter.dy - h * 0.01)
-      ..lineTo(cupCenter.dx + w * 0.03, cupCenter.dy + h * 0.05)
-      ..lineTo(cupCenter.dx - w * 0.03, cupCenter.dy + h * 0.05)
-      ..close();
-    canvas.drawPath(cupPath, outlinePaint);
-
-    // ---- 7. 底部百分比文字 ----
-    final pct = (rate * 100).round();
-    final textPainter = TextPainter(
-      text: TextSpan(
-        text: '$pct%',
-        style: const TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 11,
-            fontWeight: FontWeight.w600),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    textPainter.paint(
-        canvas,
-        Offset(w * 0.5 - textPainter.width / 2, h * 0.94));
-  }
-
-  @override
-  bool shouldRepaint(covariant _FigurePainter old) =>
-      old.rate != rate || old.tiltAngle != tiltAngle;
 }
 
 /// 定时提醒模块 - 循环/单次双标签
