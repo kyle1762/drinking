@@ -194,17 +194,18 @@ class _LoopReminder extends StatelessWidget {
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 12),
             Row(
-              children: _quick.map((m) {
+              children: _quick.asMap().entries.map((entry) {
+                final i = entry.key;
+                final m = entry.value;
                 final selected = s.loopInterval == m;
                 return Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.only(right: 8),
+                    padding: EdgeInsets.only(right: i < _quick.length - 1 ? 8 : 0),
                     child: _Chip(
                       label: '$m分钟',
                       selected: selected,
                       onTap: () {
                         s.setLoopInterval(m);
-                        // 无条件注册闹钟,即使通知权限未授权也要让闹钟触发(音效+飞书仍可执行)
                         AlarmService.scheduleLoop(m);
                       },
                     ),
