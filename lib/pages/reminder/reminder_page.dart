@@ -254,12 +254,13 @@ class _FigureWidgetState extends State<_FigureWidget>
   }
 }
 
-/// 空心小人绘制器 - 面朝左边
-/// 黑色轮廓:头(带鼻子/眼睛/嘴)/颈/身/手/腿;身体内部裁剪并从脚部填充淡蓝水位
+/// 空心小人绘制器 - 成年人侧面剪影(面朝左),双手举杯喝水
+/// 极简线条画:空心轮廓,无面部细节/无发型/无服装褶皱
+/// 躯干内部裁剪并从脚部填充淡蓝水位,高度对应今日饮水率
 class _FigurePainter extends CustomPainter {
   _FigurePainter({required this.rate, required this.tiltAngle});
   final double rate; // 0~1 今日饮水率
-  final double tiltAngle; // 头部仰头角度(弧度,负值=后仰)
+  final double tiltAngle; // 头部仰头角度(弧度)
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -272,14 +273,14 @@ class _FigurePainter extends CustomPainter {
       ..strokeJoin = StrokeJoin.round;
     final waterPaint = Paint()..color = AppColors.softBlueDeep;
 
-    // 身体区域(rounded rect)作为"杯子"
+    // 躯干区域(侧面剪影的躯干,作为水位容器)
     final bodyRect = RRect.fromRectAndRadius(
-      Rect.fromLTRB(w * 0.30, h * 0.26, w * 0.70, h * 0.72),
-      Radius.circular(w * 0.10),
+      Rect.fromLTRB(w * 0.34, h * 0.30, w * 0.62, h * 0.72),
+      Radius.circular(w * 0.08),
     );
-
-    // ---- 1. 先画身体水位填充(裁剪到 bodyRect) ----
     final bodyBounds = bodyRect.outerRect;
+
+    // ---- 1. 躯干水位填充(裁剪到躯干内部) ----
     final fillH = bodyBounds.height * rate;
     canvas.save();
     canvas.clipRRect(bodyRect);
@@ -309,81 +310,63 @@ class _FigurePainter extends CustomPainter {
     }
     canvas.restore();
 
-    // ---- 2. 画身体轮廓 ----
+    // ---- 2. 躯干轮廓 ----
     canvas.drawRRect(bodyRect, outlinePaint);
 
-    // ---- 3. 腿(一前一后,面朝左) ----
+    // ---- 3. 腿(侧面,一前一后,直立) ----
     final legTopY = bodyBounds.bottom;
-    // 后腿(右侧,稍短表示在后)
-    canvas.drawLine(Offset(w * 0.58, legTopY), Offset(w * 0.62, h * 0.92),
-        outlinePaint);
     // 前腿(左侧)
     canvas.drawLine(Offset(w * 0.42, legTopY), Offset(w * 0.38, h * 0.92),
         outlinePaint);
-
-    // ---- 4. 手臂(前臂在左表示朝向,后臂在右) ----
-    final shoulderY = bodyBounds.top + bodyBounds.height * 0.14;
-    // 后臂(右侧,从身体右上伸向右下)
-    canvas.drawLine(
-        Offset(bodyBounds.right, shoulderY),
-        Offset(w * 0.84, shoulderY + bodyBounds.height * 0.24),
-        outlinePaint);
-    // 前臂(左侧,从身体左上伸向左下前方)
-    canvas.drawLine(
-        Offset(bodyBounds.left, shoulderY),
-        Offset(w * 0.16, shoulderY + bodyBounds.height * 0.24),
+    // 后腿(右侧)
+    canvas.drawLine(Offset(w * 0.54, legTopY), Offset(w * 0.58, h * 0.92),
         outlinePaint);
 
-    // ---- 5. 头部+颈部+五官(面朝左,应用仰头旋转) ----
-    final neckBase = Offset(w * 0.5, bodyBounds.top);
-    final headCenter = Offset(w * 0.5, bodyBounds.top - h * 0.10);
-    final headRadius = w * 0.13;
+    // ---- 4. 头部+颈部(侧面朝左,无面部细节,应用仰头旋转) ----
+    final neckBase = Offset(w * 0.46, bodyBounds.top);
+    final headCenter = Offset(w * 0.40, bodyBounds.top - h * 0.10);
+    final headRadius = w * 0.11;
     canvas.save();
     canvas.translate(neckBase.dx, neckBase.dy);
-    // 面朝左时,后仰为顺时针(正角度),故取反 tiltAngle
+    // 面朝左时,仰头=顺时针(正角度),tiltAngle 为负值故取反
     canvas.rotate(-tiltAngle);
     canvas.translate(-neckBase.dx, -neckBase.dy);
     // 颈
-    canvas.drawLine(neckBase, Offset(headCenter.dx, headCenter.dy + headRadius * 0.6),
-        outlinePaint);
-    // 头(空心圆)
+    canvas.drawLine(neckBase,
+        Offset(headCenter.dx, headCenter.dy + headRadius * 0.7), outlinePaint);
+    // 头(空心圆,无面部细节)
     canvas.drawCircle(headCenter, headRadius, outlinePaint);
-
-    // 鼻子(左侧凸起小三角,表示面朝左)
-    final nosePath = Path()
-      ..moveTo(headCenter.dx - headRadius, headCenter.dy)
-      ..lineTo(headCenter.dx - headRadius - w * 0.04, headCenter.dy + h * 0.005)
-      ..lineTo(headCenter.dx - headRadius, headCenter.dy + h * 0.02)
-      ..close();
-    canvas.drawPath(nosePath, outlinePaint);
-
-    // 眼睛(左半边,一个小点)
-    final eyePaint = Paint()..color = AppColors.textPrimary;
-    canvas.drawCircle(
-      Offset(headCenter.dx - headRadius * 0.45, headCenter.dy - headRadius * 0.2),
-      1.8,
-      eyePaint,
-    );
-
-    // 嘴(左下方小弧,表示喝水)
-    final mouthPaint = Paint()
-      ..color = AppColors.textPrimary
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.8
-      ..strokeCap = StrokeCap.round;
-    canvas.drawArc(
-      Rect.fromCircle(
-          center: Offset(headCenter.dx - headRadius * 0.35,
-              headCenter.dy + headRadius * 0.25),
-          radius: headRadius * 0.28),
-      0.2,
-      math.pi - 0.4,
-      false,
-      mouthPaint,
-    );
     canvas.restore();
 
-    // ---- 6. 底部百分比文字 ----
+    // ---- 5. 手臂(双手举杯,弯曲向上贴近嘴部) ----
+    // 嘴部位置(头部左下方,无五官但杯子贴近此处)
+    final mouthPos = Offset(headCenter.dx - headRadius * 0.7,
+        headCenter.dy + headRadius * 0.2);
+    // 杯子中心(在嘴部左前方)
+    final cupCenter = Offset(mouthPos.dx - w * 0.02, mouthPos.dy);
+    // 前臂(左肩 -> 手肘 -> 杯子底部)
+    final shoulderFront = Offset(bodyBounds.left, bodyBounds.top + bodyBounds.height * 0.18);
+    final elbowFront = Offset(w * 0.26, bodyBounds.top + bodyBounds.height * 0.30);
+    canvas.drawLine(shoulderFront, elbowFront, outlinePaint);
+    canvas.drawLine(elbowFront, Offset(cupCenter.dx - w * 0.02, cupCenter.dy + h * 0.03),
+        outlinePaint);
+    // 后臂(右肩 -> 手肘 -> 杯子底部)
+    final shoulderBack = Offset(bodyBounds.right, bodyBounds.top + bodyBounds.height * 0.18);
+    final elbowBack = Offset(w * 0.34, bodyBounds.top + bodyBounds.height * 0.22);
+    canvas.drawLine(shoulderBack, elbowBack, outlinePaint);
+    canvas.drawLine(elbowBack, Offset(cupCenter.dx + w * 0.02, cupCenter.dy + h * 0.03),
+        outlinePaint);
+
+    // ---- 6. 杯子(贴近嘴部,极简梯形轮廓) ----
+    final cupPath = Path()
+      ..moveTo(cupCenter.dx - w * 0.04, cupCenter.dy - h * 0.01)
+      ..lineTo(cupCenter.dx + w * 0.04, cupCenter.dy - h * 0.01)
+      ..lineTo(cupCenter.dx + w * 0.03, cupCenter.dy + h * 0.05)
+      ..lineTo(cupCenter.dx - w * 0.03, cupCenter.dy + h * 0.05)
+      ..close();
+    canvas.drawPath(cupPath, outlinePaint);
+
+    // ---- 7. 底部百分比文字 ----
     final pct = (rate * 100).round();
     final textPainter = TextPainter(
       text: TextSpan(
