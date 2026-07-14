@@ -130,7 +130,7 @@ class AppState extends ChangeNotifier {
       (_profile.dailyGoal - todayTotal).clamp(0, _profile.dailyGoal);
   double get todayRate => todayTotal / _profile.dailyGoal.clamp(1, 99999);
 
-  // ============ AI 饮食/运动追踪 ============
+  // ============ 饮食/运动追踪 ============
   final List<FoodRecord> _foodRecords = [];
   final List<ExerciseRecord> _exerciseRecords = [];
 

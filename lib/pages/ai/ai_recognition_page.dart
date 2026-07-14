@@ -24,6 +24,8 @@ class AiRecognitionPage extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 120),
                 children: const [
                   SizedBox(height: 8),
+                  _ApiKeyCard(),
+                  SizedBox(height: 12),
                   _TodaySummary(),
                   SizedBox(height: 16),
                   _ActionCards(),
@@ -45,48 +47,154 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(20, 12, 16, 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text('饮食与运动',
+            style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 20,
+                fontWeight: FontWeight.w800)),
+      ),
+    );
+  }
+}
+
+/// API Key 配置卡片 - 外显在页面上
+class _ApiKeyCard extends StatefulWidget {
+  const _ApiKeyCard();
+
+  @override
+  State<_ApiKeyCard> createState() => _ApiKeyCardState();
+}
+
+class _ApiKeyCardState extends State<_ApiKeyCard> {
+  late TextEditingController _ctrl;
+  bool _obscure = true;
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: AiService.apiKey);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = AiService.hasApiKey;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
-      child: Row(
-        children: [
-          const Text('AI 饮食与运动',
-              style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800)),
-          const Spacer(),
-          RippleButton(
-            onTap: () => _openApiKeyDialog(context),
-            borderRadius: 20,
-            child: const Padding(
-              padding: EdgeInsets.all(8),
-              child: Icon(Icons.settings_outlined,
-                  size: 22, color: AppColors.textSecondary),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: CreamCard(
+        color: configured ? AppColors.mint : AppColors.softBlue,
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  configured ? Icons.check_circle_outline : Icons.key_outlined,
+                  size: 18,
+                  color: configured ? AppColors.mintDeep : AppColors.softBlueDeep,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  configured ? 'API Key 已配置' : 'API Key 未配置',
+                  style: TextStyle(
+                    color: configured ? AppColors.mintDeep : AppColors.softBlueDeep,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                RippleButton(
+                  onTap: () => setState(() => _editing = !_editing),
+                  borderRadius: 12,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Text(
+                      _editing ? '收起' : '修改',
+                      style: TextStyle(
+                        color: configured ? AppColors.mintDeep : AppColors.softBlueDeep,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
+            if (_editing) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _ctrl,
+                      obscureText: _obscure,
+                      decoration: InputDecoration(
+                        hintText: '输入 API Key',
+                        isDense: true,
+                        filled: true,
+                        fillColor: AppColors.cream,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                          borderSide: BorderSide.none,
+                        ),
+                        suffixIcon: RippleButton(
+                          onTap: () => setState(() => _obscure = !_obscure),
+                          child: Icon(
+                            _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            size: 18,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  RippleButton(
+                    onTap: _saveKey,
+                    borderRadius: AppThemeRadius.s,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: configured ? AppColors.mintDeep : AppColors.softBlueDeep,
+                        borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                      ),
+                      child: const Text('保存',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 
-  void _openApiKeyDialog(BuildContext context) async {
-    final s = context.read<AppState>();
-    final currentKey = AiService.apiKey;
-    final input = await AppDialogs.inputDialog(
-      context,
-      title: 'AI 接口配置',
-      hint: '请输入 API Key',
-      initial: currentKey,
-    );
-    if (input != null) {
-      await AiService.saveApiKey(input);
-      s.refreshAiData();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(input.isEmpty ? '已清除 API Key' : 'API Key 已保存')),
-        );
-      }
+  void _saveKey() async {
+    final key = _ctrl.text.trim();
+    await AiService.saveApiKey(key);
+    if (mounted) {
+      context.read<AppState>().refreshAiData();
+      setState(() => _editing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(key.isEmpty ? '已清除 API Key' : 'API Key 已保存')),
+      );
     }
   }
 }
