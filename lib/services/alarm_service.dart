@@ -1,14 +1,19 @@
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
 
 /// 闹钟服务 - 基于 android_alarm_manager_plus
-/// 负责注册循环提醒与单次提醒,支持息屏、重启后恢复
+/// 使用 oneShot + 回调中重新注册的方式实现可靠循环
+/// (Android 的 setRepeating 会被系统转为 inexact,无法保证精确触发)
 class AlarmService {
   /// 循环提醒的固定闹钟 ID(0 保留给循环)
   static const int loopAlarmId = 0;
 
   /// 单次提醒 ID 的起始基数(避免与循环 ID 冲突)
   static const int singleAlarmBase = 1000;
+
+  /// SharedPreferences 中存储循环间隔的 key
+  static const String kLoopInterval = 'loopInterval';
 
   static bool _initialized = false;
 
@@ -19,14 +24,20 @@ class AlarmService {
     _initialized = true;
   }
 
-  /// 注册循环提醒
+  /// 注册循环提醒(用 oneShot 实现,回调中自动重新注册下一次)
   /// [intervalMinutes] 间隔分钟数
-  /// 内部会先取消旧的循环闹钟再注册新的
-  /// 使用 exact + allowWhileIdle 确保息屏/低电量时也能准时触发
   static Future<void> scheduleLoop(int intervalMinutes) async {
     await cancelLoop();
     if (intervalMinutes <= 0) return;
-    await AndroidAlarmManager.periodic(
+    // 保存间隔到 SharedPreferences,供回调中重新注册时读取
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(kLoopInterval, intervalMinutes);
+    await _scheduleNextLoop(intervalMinutes);
+  }
+
+  /// 注册下一次循环闹钟
+  static Future<void> _scheduleNextLoop(int intervalMinutes) async {
+    await AndroidAlarmManager.oneShot(
       Duration(minutes: intervalMinutes),
       loopAlarmId,
       loopAlarmCallback,
@@ -37,14 +48,22 @@ class AlarmService {
     );
   }
 
+  /// 从 SharedPreferences 读取间隔并重新注册下一次循环闹钟
+  /// 供回调函数在执行完提醒后调用,确保循环不中断
+  static Future<void> rescheduleLoop() async {
+    final prefs = await SharedPreferences.getInstance();
+    final interval = prefs.getInt(kLoopInterval) ?? 0;
+    if (interval > 0) {
+      await _scheduleNextLoop(interval);
+    }
+  }
+
   /// 取消循环提醒
   static Future<void> cancelLoop() async {
     await AndroidAlarmManager.cancel(loopAlarmId);
   }
 
   /// 注册单次提醒
-  /// [alarmId] 闹钟 ID(用于后续取消)
-  /// [time] 触发时间
   static Future<void> scheduleSingle(int alarmId, DateTime time) async {
     await AndroidAlarmManager.cancel(alarmId);
     await AndroidAlarmManager.oneShotAt(
@@ -61,7 +80,7 @@ class AlarmService {
     await AndroidAlarmManager.cancel(alarmId);
   }
 
-  /// 取消所有提醒(循环 + 指定的单次 ID 列表)
+  /// 取消所有提醒
   static Future<void> cancelAll(List<int> singleIds) async {
     await cancelLoop();
     for (final id in singleIds) {
@@ -71,10 +90,12 @@ class AlarmService {
 }
 
 /// 循环提醒的顶层回调函数(必须为 public 顶层函数,带 vm:entry-point 注解)
-/// 私有函数(下划线开头)在 release 模式下会被 tree-shake 导致后台 isolate 找不到回调
 @pragma('vm:entry-point')
 void loopAlarmCallback(int id, Map<String, dynamic>? params) async {
+  // 执行提醒逻辑(通知+音效+飞书)
   await NotificationService.onAlarmFired(id);
+  // 无论是否执行提醒(可能被免打扰拦截),都重新注册下一次,确保循环不中断
+  await AlarmService.rescheduleLoop();
 }
 
 /// 单次提醒的顶层回调函数

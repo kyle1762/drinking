@@ -245,158 +245,36 @@ class _RainPainter extends CustomPainter {
   bool shouldRepaint(covariant _RainPainter old) => true;
 }
 
-/// 快速喝水按键 - 简易版/专业版切换
-class _QuickPunchButtons extends StatefulWidget {
-  @override
-  State<_QuickPunchButtons> createState() => _QuickPunchButtonsState();
-}
-
-class _QuickPunchButtonsState extends State<_QuickPunchButtons> {
-  /// true=简易版,false=专业版
-  bool _simple = true;
-
-  // 简易版:抿一口/喝小口/大口喝
-  static const _simpleOptions = [
-    ('抿一口', 10),
-    ('喝小口', 50),
-    ('大口喝', 200),
-  ];
-  // 专业版:精准数值
-  static const _proOptions = [
-    ('10ml', 10),
-    ('100ml', 100),
-    ('500ml', 500),
-  ];
-
+/// 快速喝水按键 - 抿一口/喝小口/大口喝/自定义 四按钮
+class _QuickPunchButtons extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final options = _simple ? _simpleOptions : _proOptions;
-    return Column(
+    return Wrap(
+      spacing: 10,
       children: [
-        // 简易版/专业版切换
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: AppColors.paused,
-            borderRadius: BorderRadius.circular(AppThemeRadius.m),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _toggle('简易版', _simple),
-              _toggle('专业版', !_simple),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          children: options.map((o) {
-            final (label, ml) = o;
-            return Material(
-              color: AppColors.softBlue,
-              borderRadius: BorderRadius.circular(AppThemeRadius.s),
-              child: InkWell(
-                onTap: () {
-                  s.addRecord(ml);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('$label 已记录 ${ml}ml')),
-                  );
-                },
-                borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                  child: Text(label,
-                      style: const TextStyle(
-                          color: AppColors.softBlueDeep,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700)),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
+        _punchBtn('抿一口', () => s.addRecord(10)),
+        _punchBtn('喝小口', () => s.addRecord(50)),
+        _punchBtn('大口喝', () => s.addRecord(200)),
+        _punchBtn('自定义', () => _customAmount(context, s)),
       ],
     );
   }
 
-  Widget _toggle(String label, bool selected) {
-    return GestureDetector(
-      onTap: () => setState(() => _simple = label == '简易版'),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(AppThemeRadius.s),
-        ),
-        child: Text(label,
-            style: TextStyle(
-              color:
-                  selected ? AppColors.softBlueDeep : AppColors.textSecondary,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            )),
-      ),
-    );
-  }
-}
-
-/// 喝水打卡卡片
-class PunchButton extends StatelessWidget {
-  const PunchButton({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: CreamCard(
-        child: Column(
-          children: [
-            _QuickPunchButtons(),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                RippleButton(
-                  onTap: () => _customAmount(context, s),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: AppColors.divider),
-                      borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                    ),
-                    child: const Text('自定义容量',
-                        style: TextStyle(
-                            color: AppColors.textSecondary, fontSize: 12)),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                RippleButton(
-                  onTap: () {
-                    s.undoLastRecord();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已撤销最近一次记录')),
-                    );
-                  },
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: AppColors.divider),
-                      borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                    ),
-                    child: const Text('撤销',
-                        style: TextStyle(
-                            color: AppColors.textSecondary, fontSize: 12)),
-                  ),
-                ),
-              ],
-            ),
-          ],
+  Widget _punchBtn(String label, VoidCallback onTap) {
+    return Material(
+      color: AppColors.softBlue,
+      borderRadius: BorderRadius.circular(AppThemeRadius.s),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppThemeRadius.s),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          child: Text(label,
+              style: const TextStyle(
+                  color: AppColors.softBlueDeep,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700)),
         ),
       ),
     );
@@ -413,12 +291,43 @@ class PunchButton extends StatelessWidget {
       final amount = int.tryParse(input);
       if (amount != null && amount > 0) {
         s.addRecord(amount);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('已记录 $amount ml')));
-        }
       }
     }
+  }
+}
+
+/// 喝水打卡卡片
+class PunchButton extends StatelessWidget {
+  const PunchButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: CreamCard(
+        child: Column(
+          children: [
+            _QuickPunchButtons(),
+            const SizedBox(height: 12),
+            RippleButton(
+              onTap: () => s.undoLastRecord(),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.divider),
+                  borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                ),
+                child: const Text('撤销',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

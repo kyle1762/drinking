@@ -175,7 +175,7 @@ class _ReminderModule extends StatelessWidget {
 class _LoopReminder extends StatelessWidget {
   const _LoopReminder();
 
-  // 快捷间隔:20分钟、40分钟、60分钟(1小时)
+  // 快捷间隔:20分钟、40分钟、60分钟
   static const _quick = [20, 40, 60];
 
   @override
@@ -198,7 +198,7 @@ class _LoopReminder extends StatelessWidget {
               children: _quick.map((m) {
                 final selected = s.loopInterval == m;
                 return _Chip(
-                  label: m < 60 ? '$m分钟' : '${m ~/ 60}小时',
+                  label: '$m分钟',
                   selected: selected,
                   onTap: () {
                     s.setLoopInterval(m);
@@ -207,11 +207,6 @@ class _LoopReminder extends StatelessWidget {
                         !s.reminderPaused) {
                       AlarmService.scheduleLoop(m);
                     }
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text(
-                              '已设置每${m < 60 ? '$m分钟' : '${m ~/ 60}小时'}提醒一次')),
-                    );
                   },
                 );
               }).toList(),
@@ -261,9 +256,6 @@ class _LoopReminder extends StatelessWidget {
                           !s.reminderPaused) {
                         AlarmService.scheduleLoop(v.round());
                       }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('间隔已更新为 ${v.round()} 分钟')),
-                      );
                     },
                   ),
                 ),

@@ -90,6 +90,7 @@ class NotificationService {
   /// 检查免打扰/提醒时段/重复周期,不满足条件时静默跳过
   @pragma('vm:entry-point')
   static Future<void> onAlarmFired(int id) async {
+    debugPrint('[AlarmFired] 闹钟触发, id=$id, time=${DateTime.now()}');
     try {
       WidgetsFlutterBinding.ensureInitialized();
     } catch (_) {
@@ -101,14 +102,24 @@ class NotificationService {
     final prefs = await SharedPreferences.getInstance();
 
     // 免打扰检查
-    if (_isInDndPeriod(prefs)) return;
+    if (_isInDndPeriod(prefs)) {
+      debugPrint('[AlarmFired] 处于免打扰时段,跳过提醒');
+      return;
+    }
 
     // 提醒时段检查
-    if (!_isInRangeTime(prefs)) return;
+    if (!_isInRangeTime(prefs)) {
+      debugPrint('[AlarmFired] 不在提醒时段内,跳过提醒');
+      return;
+    }
 
     // 重复周期检查
-    if (!_isRepeatDay(prefs)) return;
+    if (!_isRepeatDay(prefs)) {
+      debugPrint('[AlarmFired] 今天不在重复周期内,跳过提醒');
+      return;
+    }
 
+    debugPrint('[AlarmFired] 通过所有检查,执行提醒');
     await showReminder(id: id);
 
     // 播放治愈音效(从 SharedPreferences 读取用户配置的音效类型与音量)
@@ -117,11 +128,14 @@ class NotificationService {
       final soundName = prefs.getString(_kSound);
       final sound = SoundType.fromName(soundName);
       final volume = prefs.getDouble(_kEarphoneVolume) ?? 0.6;
+      debugPrint('[AlarmFired] 播放音效: ${sound.file}, 音量: $volume');
       await AudioService.playFromBackground(sound, volume: volume);
     }
 
     // 同时发送飞书推送(后台 isolate 中直接读 SharedPreferences)
+    debugPrint('[AlarmFired] 发送飞书推送');
     await FeishuService.pushReminderFromBackground();
+    debugPrint('[AlarmFired] 提醒流程完成');
   }
 
   /// 检查当前是否处于免打扰时段
@@ -147,10 +161,16 @@ class NotificationService {
     final endParts = end.split(':');
     if (startParts.length != 2 || endParts.length != 2) return true;
 
-    final startMin =
-        int.tryParse(startParts[0])! * 60 + int.tryParse(startParts[1])!;
-    final endMin =
-        int.tryParse(endParts[0])! * 60 + int.tryParse(endParts[1])!;
+    final startH = int.tryParse(startParts[0]);
+    final startM = int.tryParse(startParts[1]);
+    final endH = int.tryParse(endParts[0]);
+    final endM = int.tryParse(endParts[1]);
+    if (startH == null || startM == null || endH == null || endM == null) {
+      return true; // 解析失败时不拦截,默认允许提醒
+    }
+
+    final startMin = startH * 60 + startM;
+    final endMin = endH * 60 + endM;
 
     final now = DateTime.now();
     final nowMin = now.hour * 60 + now.minute;
