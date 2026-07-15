@@ -4,8 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
 
 /// 闹钟服务 - 基于 android_alarm_manager_plus
-/// 使用 oneShot + 回调中重新注册的方式实现可靠循环
-/// (Android 的 setRepeating 会被系统转为 inexact,无法保证精确触发)
+/// 使用 oneShotAt(绝对时间) + 回调中重新注册的方式实现可靠循环
 class AlarmService {
   /// 循环提醒的固定闹钟 ID(0 保留给循环)
   static const int loopAlarmId = 0;
@@ -15,6 +14,7 @@ class AlarmService {
 
   /// SharedPreferences 中存储循环间隔的 key
   static const String kLoopInterval = 'loopInterval';
+  static const String kNextAlarmTime = 'nextAlarmTime';
 
   static bool _initialized = false;
 
@@ -31,23 +31,25 @@ class AlarmService {
     }
   }
 
-  /// 注册循环提醒(用 oneShot 实现,回调中自动重新注册下一次)
+  /// 注册循环提醒(用 oneShotAt 实现,回调中自动重新注册下一次)
   /// [intervalMinutes] 间隔分钟数
   static Future<bool> scheduleLoop(int intervalMinutes) async {
     await cancelLoop();
     if (intervalMinutes <= 0) return false;
-    // 保存间隔到 SharedPreferences,供回调中重新注册时读取
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(kLoopInterval, intervalMinutes);
-    return _scheduleNextLoop(intervalMinutes);
+    // 计算下次提醒的绝对时间
+    final nextTime = DateTime.now().add(Duration(minutes: intervalMinutes));
+    await prefs.setString(kNextAlarmTime, nextTime.toIso8601String());
+    return _scheduleNextLoopAt(nextTime);
   }
 
-  /// 注册下一次循环闹钟
-  static Future<bool> _scheduleNextLoop(int intervalMinutes) async {
-    debugPrint('[AlarmService] 注册循环闹钟: $intervalMinutes 分钟后');
+  /// 在指定绝对时间注册下一次循环闹钟(更可靠,不受 Duration 计算偏差影响)
+  static Future<bool> _scheduleNextLoopAt(DateTime time) async {
+    debugPrint('[AlarmService] 注册循环闹钟: $time');
     try {
-      final ok = await AndroidAlarmManager.oneShot(
-        Duration(minutes: intervalMinutes),
+      final ok = await AndroidAlarmManager.oneShotAt(
+        time,
         loopAlarmId,
         loopAlarmCallback,
         rescheduleOnReboot: true,
@@ -69,7 +71,54 @@ class AlarmService {
     final prefs = await SharedPreferences.getInstance();
     final interval = prefs.getInt(kLoopInterval) ?? 0;
     if (interval > 0) {
-      await _scheduleNextLoop(interval);
+      final nextTime = DateTime.now().add(Duration(minutes: interval));
+      await prefs.setString(kNextAlarmTime, nextTime.toIso8601String());
+      await _scheduleNextLoopAt(nextTime);
+    }
+  }
+
+  /// App 回前台时检查闹钟是否漏触发
+  /// 如果下次提醒时间已过但闹钟没响,补发提醒并重新注册
+  /// 返回 true 表示补发了提醒
+  static Future<bool> checkAndFireMissedAlarm() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final interval = prefs.getInt(kLoopInterval) ?? 0;
+      if (interval <= 0) return false;
+
+      // 检查是否启用了提醒
+      final enabled = prefs.getBool('reminderEnabled') ?? true;
+      final paused = prefs.getBool('reminderPaused') ?? false;
+      if (!enabled || paused) return false;
+
+      final nextStr = prefs.getString(kNextAlarmTime);
+      if (nextStr == null) {
+        // 没有记录下次提醒时间,重新注册
+        debugPrint('[AlarmService] 无下次提醒时间记录,重新注册');
+        await rescheduleLoop();
+        return false;
+      }
+
+      final nextTime = DateTime.tryParse(nextStr);
+      if (nextTime == null) {
+        await rescheduleLoop();
+        return false;
+      }
+
+      final now = DateTime.now();
+      if (now.isAfter(nextTime)) {
+        // 闹钟时间已过,说明漏触发了
+        debugPrint('[AlarmService] 检测到漏触发提醒: 应于 $nextTime 触发,当前 $now');
+        // 补发提醒
+        await NotificationService.onAlarmFired(loopAlarmId);
+        // 重新注册下一次
+        await rescheduleLoop();
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('[AlarmService] 检查漏触发异常: $e');
+      return false;
     }
   }
 
@@ -95,7 +144,7 @@ class AlarmService {
     await AndroidAlarmManager.cancel(alarmId);
   }
 
-  /// 测试提醒:5秒后触发一次闹钟,用于验证闹钟机制是否正常
+  /// 测试提醒:5秒后触发一次闹钟,用于验证闘钟机制是否正常
   /// 返回 true 表示注册成功
   static Future<bool> scheduleTest() async {
     debugPrint('[AlarmService] 注册测试闹钟: 5秒后触发');

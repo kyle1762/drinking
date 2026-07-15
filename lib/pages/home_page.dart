@@ -59,8 +59,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      // App 回前台时同步今日提醒次数(后台 isolate 可能已更新)
+      // App 回前台时:
+      // 1. 同步今日提醒次数(后台 isolate 可能已更新)
       context.read<AppState>().syncReminderCount();
+      // 2. 检查闹钟是否漏触发(后台被杀导致闹钟没响),漏了就补发
+      Future.microtask(() async {
+        await AlarmService.checkAndFireMissedAlarm();
+      });
     }
   }
 

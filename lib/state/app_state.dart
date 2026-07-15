@@ -514,12 +514,22 @@ class AppState extends ChangeNotifier {
   }
 
   /// 保存用户填写的飞书机器人凭证(App ID / App Secret)
-  /// 持久化到本地,后台 isolate 也可读取
+  /// 如果凭证发生变更,清除旧的 openId,要求用户重新 OAuth 登录
   void saveFeishuCredentials({required String appId, required String appSecret}) {
+    final changed = _feishuAppId != appId || _feishuAppSecret != appSecret;
     _feishuAppId = appId;
     _feishuAppSecret = appSecret;
     StorageService.saveFeishuAppId(appId);
     StorageService.saveFeishuAppSecret(appSecret);
+    // 凭证变更时清除旧的 openId 和绑定状态
+    if (changed && _feishuOpenId.isNotEmpty) {
+      _feishuOpenId = '';
+      _feishuName = '';
+      _accountState = AccountState.loggedIn;
+      StorageService.saveFeishuOpenId('');
+      StorageService.saveFeishuName('');
+      StorageService.saveAccountState(_accountState.index);
+    }
     notifyListeners();
   }
 
