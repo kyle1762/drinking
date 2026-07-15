@@ -28,6 +28,11 @@ class NotificationService {
   static const _kEarphoneEnabled = 'earphoneEnabled';
   static const _kEarphoneVolume = 'earphoneVolume';
 
+  // 今日提醒次数持久化 key
+  static const _kTodayReminderCount = 'todayReminderCount';
+  static const _kTodayReminderDate = 'todayReminderDate';
+  static const _kLastReminderTime = 'lastReminderTime';
+
   /// 初始化插件与通知渠道
   static Future<void> init() async {
     if (_initialized) return;
@@ -136,6 +141,9 @@ class NotificationService {
     debugPrint('[AlarmFired] 发送飞书推送');
     await FeishuService.pushReminderFromBackground();
     debugPrint('[AlarmFired] 提醒流程完成');
+
+    // 记录今日提醒次数(持久化,App 回前台时读取)
+    await _recordReminderFired(prefs);
   }
 
   /// 测试提醒:跳过所有条件检查,直接执行通知+音效+飞书推送
@@ -159,7 +167,25 @@ class NotificationService {
       await AudioService.playFromBackground(sound, volume: volume);
     }
     await FeishuService.pushReminderFromBackground();
+    await _recordReminderFired(prefs);
     debugPrint('[TestAlarm] 测试提醒流程完成');
+  }
+
+  /// 记录提醒已触发(持久化今日提醒次数 + 上次提醒时间)
+  /// App 回前台时由 AppState.syncReminderCount() 读取
+  static Future<void> _recordReminderFired(SharedPreferences prefs) async {
+    final today = DateTime.now();
+    final todayStr = '${today.year}-${today.month}-${today.day}';
+    final savedDate = prefs.getString(_kTodayReminderDate);
+    int count = prefs.getInt(_kTodayReminderCount) ?? 0;
+    // 日期变更则重置计数
+    if (savedDate != todayStr) {
+      count = 0;
+    }
+    count++;
+    await prefs.setInt(_kTodayReminderCount, count);
+    await prefs.setString(_kTodayReminderDate, todayStr);
+    await prefs.setString(_kLastReminderTime, today.toIso8601String());
   }
 
   /// 检查当前是否处于免打扰时段

@@ -1,7 +1,9 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../services/storage_service.dart';
 import '../services/feishu_service.dart';
+import '../services/alarm_service.dart';
 
 /// 全局状态 - 单一数据源(安卓ViewModel统一数据源)
 /// 三页面共享:账号三态、全局参数单向同步、提醒/记录/飞书配置
@@ -9,6 +11,24 @@ import '../services/feishu_service.dart';
 class AppState extends ChangeNotifier {
   AppState() {
     _loadFromStorage();
+    // App 启动时如果提醒已开启,自动重新注册闹钟(确保后台被杀后重启仍能提醒)
+    _ensureAlarmScheduled();
+    // 同步今日提醒次数(从 SharedPreferences 读取后台 isolate 写入的计数)
+    syncReminderCount();
+  }
+
+  /// 确保闹钟已注册(App 启动时调用)
+  void _ensureAlarmScheduled() {
+    if (_reminderEnabled && !_reminderPaused) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          await AlarmService.scheduleLoop(_loopInterval);
+          debugPrint('[AppState] 启动时已重新注册循环闹钟');
+        } catch (e) {
+          debugPrint('[AppState] 启动时注册闹钟失败: $e');
+        }
+      });
+    }
   }
 
   // ============ 账号三态 ============
@@ -57,24 +77,49 @@ class AppState extends ChangeNotifier {
   RepeatCycle get repeat => _repeat;
   bool get reminderPaused => _reminderPaused;
 
-  /// 今日已提醒次数(运行时累计,重启归零)
+  /// 今日已提醒次数(从 SharedPreferences 同步,后台 isolate 也能写入)
   int _todayReminderCount = 0;
   int get todayReminderCount => _todayReminderCount;
-  void incrementReminderCount() {
-    _todayReminderCount++;
-    notifyListeners();
+
+  /// 上次提醒时间
+  DateTime? _lastReminderTime;
+
+  /// 从 SharedPreferences 同步今日提醒次数(App 回前台时调用)
+  void syncReminderCount() {
+    Future.microtask(() async {
+      final prefs = await SharedPreferences.getInstance();
+      final today = DateTime.now();
+      final todayStr = '${today.year}-${today.month}-${today.day}';
+      final savedDateStr = prefs.getString('todayReminderDate');
+      final count = prefs.getInt('todayReminderCount') ?? 0;
+      final lastStr = prefs.getString('lastReminderTime');
+
+      // 日期变更则重置
+      if (savedDateStr != todayStr) {
+        _todayReminderCount = 0;
+      } else {
+        _todayReminderCount = count;
+      }
+
+      _lastReminderTime = lastStr != null ? DateTime.tryParse(lastStr) : null;
+      notifyListeners();
+    });
   }
 
   /// 喝水动画触发计数器 - 每次 addRecord 自增,小人组件监听此值触发喝水动画
   int _drinkPulse = 0;
   int get drinkPulse => _drinkPulse;
 
-  /// 下次提醒时间
+  /// 下次提醒时间(基于上次提醒时间 + 间隔计算,而非当前时间)
   String get nextReminderTime {
     if (!_reminderEnabled || _reminderPaused) return '已暂停';
     final now = DateTime.now();
-    final next = now.add(Duration(minutes: _loopInterval));
-    return '${next.hour.toString().padLeft(2, '0')}:${next.minute.toString().padLeft(2, '0')}';
+    // 如果有上次提醒时间,基于它计算下次;否则基于当前时间
+    final base = _lastReminderTime ?? now;
+    final next = base.add(Duration(minutes: _loopInterval));
+    // 如果算出的时间已经过了(比如App长时间未运行),则用当前时间 + 间隔
+    final actualNext = next.isAfter(now) ? next : now.add(Duration(minutes: _loopInterval));
+    return '${actualNext.hour.toString().padLeft(2, '0')}:${actualNext.minute.toString().padLeft(2, '0')}';
   }
 
   // ============ 耳机专属设置 ============

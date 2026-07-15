@@ -36,17 +36,32 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _index = 0;
   DateTime? _lastBackPressed;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // 首次启动时弹窗提醒开启通知权限
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstLaunchNotification());
     // 请求忽略电池优化(防止国产ROM杀死后台闹钟)
     WidgetsBinding.instance.addPostFrameCallback((_) => _requestIgnoreBatteryOptimization());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App 回前台时同步今日提醒次数(后台 isolate 可能已更新)
+      context.read<AppState>().syncReminderCount();
+    }
   }
 
   /// 请求忽略电池优化,确保后台闹钟能准时触发

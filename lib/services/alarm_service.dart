@@ -128,11 +128,17 @@ class AlarmService {
 /// 循环提醒的顶层回调函数(必须为 public 顶层函数,带 vm:entry-point 注解)
 @pragma('vm:entry-point')
 void loopAlarmCallback(int id, Map<String, dynamic>? params) async {
-  debugPrint('[AlarmCallback] 循环闹钟回调触发, id=$id');
-  // 执行提醒逻辑(通知+音效+飞书)
-  await NotificationService.onAlarmFired(id);
-  // 无论是否执行提醒(可能被免打扰拦截),都重新注册下一次,确保循环不中断
-  await AlarmService.rescheduleLoop();
+  debugPrint('[AlarmCallback] 循环闹钟回调触发, id=$id, time=${DateTime.now()}');
+  // 执行提醒逻辑(通知+音效+飞书),用 try-finally 确保无论是否异常都重新注册下一次
+  try {
+    await NotificationService.onAlarmFired(id);
+  } catch (e) {
+    debugPrint('[AlarmCallback] onAlarmFired 异常: $e');
+  } finally {
+    // 无论是否执行提醒(可能被免打扰拦截或异常),都重新注册下一次,确保循环不中断
+    await AlarmService.rescheduleLoop();
+    debugPrint('[AlarmCallback] 已重新注册下一次闹钟');
+  }
 }
 
 /// 单次提醒的顶层回调函数
