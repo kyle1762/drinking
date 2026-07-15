@@ -81,11 +81,16 @@ class FeishuService {
         headers: {'Content-Type': 'application/json; charset=utf-8'},
         body: jsonEncode({'app_id': appId, 'app_secret': appSecret}),
       );
+      debugPrint('[FeishuToken] statusCode=${resp.statusCode}, body=${resp.body}');
       if (resp.statusCode != 200) return null;
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (data['code'] != 0) return null;
+      if (data['code'] != 0) {
+        debugPrint('[FeishuToken] 获取失败: code=${data['code']}, msg=${data['msg']}');
+        return null;
+      }
       return data['tenant_access_token'] as String?;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[FeishuToken] 异常: $e');
       return null;
     }
   }
@@ -148,8 +153,8 @@ class FeishuService {
   }
 
   /// 发送文本消息给指定用户
-  /// 返回是否发送成功
-  static Future<bool> sendMessage({
+  /// 返回 (success, message),message 包含失败原因
+  static Future<(bool success, String message)> sendMessageWithDetail({
     required String token,
     required String openId,
     required String text,
@@ -167,12 +172,31 @@ class FeishuService {
           'content': jsonEncode({'text': text}),
         }),
       );
-      if (resp.statusCode != 200) return false;
+      debugPrint('[FeishuMsg] statusCode=${resp.statusCode}, body=${resp.body}');
+      if (resp.statusCode != 200) {
+        return (false, 'HTTP ${resp.statusCode}');
+      }
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      return data['code'] == 0;
-    } catch (_) {
-      return false;
+      final code = data['code'];
+      if (code == 0) {
+        return (true, '发送成功');
+      }
+      // 常见错误码翻译
+      final msg = data['msg'] as String? ?? '未知错误';
+      return (false, 'code:$code $msg');
+    } catch (e) {
+      return (false, '异常: $e');
     }
+  }
+
+  /// 发送文本消息给指定用户(简化版,仅返回 bool)
+  static Future<bool> sendMessage({
+    required String token,
+    required String openId,
+    required String text,
+  }) async {
+    final result = await sendMessageWithDetail(token: token, openId: openId, text: text);
+    return result.$1;
   }
 
   // ============ 后台 isolate 专用 ============

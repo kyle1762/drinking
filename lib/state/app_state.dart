@@ -543,21 +543,33 @@ class AppState extends ChangeNotifier {
   }
 
   /// 发送飞书消息(前台调用)
-  /// 使用本地保存的用户凭证,不再回退预置凭证
-  /// 返回是否发送成功
-  Future<bool> sendFeishuMessage(String text) async {
-    if (!isFeishuBound) return false;
-    if (_feishuAppId.isEmpty || _feishuAppSecret.isEmpty) return false;
+  /// 返回 (success, message),message 包含失败原因
+  Future<(bool success, String message)> sendFeishuMessageWithDetail(String text) async {
+    if (!isFeishuBound) return (false, '飞书未绑定,请先登录');
+    if (_feishuAppId.isEmpty || _feishuAppSecret.isEmpty) {
+      return (false, 'App ID/Secret 未配置');
+    }
+    if (_feishuOpenId.isEmpty) {
+      return (false, 'openId 为空,请重新登录飞书绑定');
+    }
     final token = await FeishuService.getTenantAccessToken(
       appId: _feishuAppId,
       appSecret: _feishuAppSecret,
     );
-    if (token == null) return false;
-    return FeishuService.sendMessage(
+    if (token == null) {
+      return (false, '获取 token 失败,请检查 App ID/Secret 是否正确');
+    }
+    return FeishuService.sendMessageWithDetail(
       token: token,
       openId: _feishuOpenId,
       text: text,
     );
+  }
+
+  /// 发送飞书消息(简化版,仅返回 bool)
+  Future<bool> sendFeishuMessage(String text) async {
+    final result = await sendFeishuMessageWithDetail(text);
+    return result.$1;
   }
 
   // ---- 免打扰 ----

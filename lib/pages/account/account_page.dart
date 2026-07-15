@@ -723,10 +723,13 @@ class _FeishuBindCard extends StatelessWidget {
     messenger.showSnackBar(
       const SnackBar(content: Text('正在发送测试消息...')),
     );
-    final ok = await s.sendFeishuMessage('喝水提醒测试:飞书推送已连通~');
+    final result = await s.sendFeishuMessageWithDetail('喝水提醒测试:飞书推送已连通~');
     if (!context.mounted) return;
     messenger.showSnackBar(
-      SnackBar(content: Text(ok ? '测试消息已发送至飞书' : '发送失败,请检查网络或凭证')),
+      SnackBar(
+        content: Text(result.$1 ? '测试消息已发送至飞书' : '发送失败: ${result.$2}'),
+        duration: const Duration(seconds: 5),
+      ),
     );
   }
 }
