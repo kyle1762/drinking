@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,13 +14,9 @@ import 'ai/ai_recognition_page.dart';
 
 const _kTabs = <_TabItem>[
   _TabItem(
-      icon: Icons.water_drop_outlined,
-      label: '喝水提醒',
-      page: ReminderPage()),
+      icon: Icons.water_drop_outlined, label: '喝水提醒', page: ReminderPage()),
   _TabItem(
-      icon: Icons.analytics_outlined,
-      label: '热量追踪',
-      page: AiRecognitionPage()),
+      icon: Icons.analytics_outlined, label: '热量追踪', page: AiRecognitionPage()),
   _TabItem(
       icon: Icons.person_outline_rounded, label: '账号&飞书', page: AccountPage()),
 ];
@@ -39,19 +36,30 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _index = 0;
   DateTime? _lastBackPressed;
+  Timer? _syncTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     // 首次启动时弹窗提醒开启通知权限
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkFirstLaunchNotification());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _checkFirstLaunchNotification());
+    // 首次启动时询问是否开启午休免打扰
+    WidgetsBinding.instance.addPostFrameCallback((_) => _promptNoonDnd());
     // 请求忽略电池优化(防止国产ROM杀死后台闹钟)
-    WidgetsBinding.instance.addPostFrameCallback((_) => _requestIgnoreBatteryOptimization());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _requestIgnoreBatteryOptimization());
+    // 前台定时器:每30秒同步今日提醒次数和下次提醒时间
+    // 解决后台 isolate 写入 SharedPreferences 后前台 UI 不实时更新的问题
+    _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) context.read<AppState>().syncReminderCount();
+    });
   }
 
   @override
   void dispose() {
+    _syncTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -96,11 +104,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('开启喝水提醒', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-        content: const Text('需要开启通知权限,才能在后台温柔地提醒你喝水哦~', style: TextStyle(fontSize: 14, height: 1.5)),
+        title: const Text('开启喝水提醒',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        content: const Text('需要开启通知权限,才能在后台温柔地提醒你喝水哦~',
+            style: TextStyle(fontSize: 14, height: 1.5)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('稍后')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('去开启')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('稍后')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('去开启')),
         ],
       ),
     );
@@ -109,11 +123,47 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       s.setNotificationGranted(granted);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(granted ? '通知权限已开启,温柔提醒已就绪' : '通知权限被拒绝,可在系统设置中开启')),
+        SnackBar(
+            content: Text(granted ? '通知权限已开启,温柔提醒已就绪' : '通知权限被拒绝,可在系统设置中开启')),
       );
       if (granted && s.reminderEnabled && !s.reminderPaused) {
         await AlarmService.scheduleLoop(s.loopInterval);
       }
+    }
+  }
+
+  /// 首次启动询问是否开启午休免打扰(12:30~14:30)
+  Future<void> _promptNoonDnd() async {
+    final s = context.read<AppState>();
+    if (s.hasPromptedNoonDnd) return;
+    // 标记已弹过(无论用户选择)
+    s.markNoonDndPrompted();
+    if (!mounted) return;
+    final enable = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('开启午休免打扰?',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        content: const Text(
+            '开启后,中午 12:30 ~ 14:30 期间提醒将静音(闹钟仍正常触发,通知栏可见)。\n\n你可以稍后在「喝水提醒」页面的「免打扰」中修改。',
+            style: TextStyle(fontSize: 14, height: 1.5)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('暂不开启')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('开启')),
+        ],
+      ),
+    );
+    if (enable == true) {
+      s.setNoonDnd(true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已开启午休免打扰(12:30~14:30)')),
+      );
     }
   }
 

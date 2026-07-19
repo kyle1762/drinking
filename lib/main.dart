@@ -29,7 +29,7 @@ class DrinkingApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => AppState(),
       child: MaterialApp(
-        title: '喝水提醒',
+        title: '喝水小精灵',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
         home: const HomePage(),

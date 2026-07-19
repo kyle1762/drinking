@@ -108,8 +108,8 @@ class AiService {
             '{"name":"食物名称","calories_per_100g":每100克热量(kcal整数),"confidence":0到1之间的信心度}\n'
             '例如: {"name":"苹果","calories_per_100g":52,"confidence":0.9}'
         : '请识别这张图片中的运动类型。返回纯JSON格式(不要markdown标记),包含以下字段:\n'
-            '{"name":"运动名称","calories_per_minute":每分钟消耗热量(kcal整数),"confidence":0到1之间的信心度}\n'
-            '例如: {"name":"跑步","calories_per_minute":10,"confidence":0.85}';
+            '{"name":"运动名称","calories_per_rep":每次动作消耗热量(kcal,可为小数),"confidence":0到1之间的信心度}\n'
+            '例如: {"name":"俯卧撑","calories_per_rep":0.5,"confidence":0.85}';
 
     // 构造智谱 chat/completions 请求
     final response = await http.post(
@@ -125,7 +125,10 @@ class AiService {
             'role': 'user',
             'content': [
               {'type': 'text', 'text': prompt},
-              {'type': 'image_url', 'image_url': {'url': imageUrl}},
+              {
+                'type': 'image_url',
+                'image_url': {'url': imageUrl}
+              },
             ],
           },
         ],
@@ -156,7 +159,7 @@ class AiService {
     final confidence = (json['confidence'] as num?)?.toDouble() ?? 0.5;
     final value = type == AiRecognitionType.food
         ? (json['calories_per_100g'] as num?)?.toDouble() ?? 100
-        : (json['calories_per_minute'] as num?)?.toDouble() ?? 8;
+        : (json['calories_per_rep'] as num?)?.toDouble() ?? 0.5;
 
     return AiRecognitionResult(
       type: type,
@@ -203,8 +206,8 @@ class AiService {
     } else {
       return AiRecognitionResult(
         type: AiRecognitionType.exercise,
-        name: '跑步',
-        value: 10, // 10 kcal / 分钟
+        name: '俯卧撑',
+        value: 0.5, // 0.5 kcal / 次
         confidence: 0.78,
         imagePath: imagePath,
       );

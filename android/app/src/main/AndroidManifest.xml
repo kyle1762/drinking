@@ -19,7 +19,7 @@
         android:maxSdkVersion="32"/>
 
     <application
-        android:label="喝水提醒"
+        android:label="喝水小精灵"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -30,7 +30,7 @@ class AiRecognitionPage extends StatelessWidget {
                   SizedBox(height: 16),
                   _ActionCards(),
                   SizedBox(height: 16),
-                  SectionTitle('今日记录'),
+                  SectionTitle('本日热量记录'),
                   _TodayRecordList(),
                 ],
               ),
@@ -102,13 +102,16 @@ class _ApiKeyCardState extends State<_ApiKeyCard> {
                 Icon(
                   configured ? Icons.check_circle_outline : Icons.key_outlined,
                   size: 18,
-                  color: configured ? AppColors.mintDeep : AppColors.softBlueDeep,
+                  color:
+                      configured ? AppColors.mintDeep : AppColors.softBlueDeep,
                 ),
                 const SizedBox(width: 6),
                 Text(
                   configured ? 'API Key 已配置' : 'API Key 未配置',
                   style: TextStyle(
-                    color: configured ? AppColors.mintDeep : AppColors.softBlueDeep,
+                    color: configured
+                        ? AppColors.mintDeep
+                        : AppColors.softBlueDeep,
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
                   ),
@@ -118,11 +121,14 @@ class _ApiKeyCardState extends State<_ApiKeyCard> {
                   onTap: () => setState(() => _editing = !_editing),
                   borderRadius: 12,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     child: Text(
                       _editing ? '收起' : '修改',
                       style: TextStyle(
-                        color: configured ? AppColors.mintDeep : AppColors.softBlueDeep,
+                        color: configured
+                            ? AppColors.mintDeep
+                            : AppColors.softBlueDeep,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
@@ -151,7 +157,9 @@ class _ApiKeyCardState extends State<_ApiKeyCard> {
                         suffixIcon: RippleButton(
                           onTap: () => setState(() => _obscure = !_obscure),
                           child: Icon(
-                            _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                            _obscure
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
                             size: 18,
                             color: AppColors.textSecondary,
                           ),
@@ -165,9 +173,12 @@ class _ApiKeyCardState extends State<_ApiKeyCard> {
                     onTap: _saveKey,
                     borderRadius: AppThemeRadius.s,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: configured ? AppColors.mintDeep : AppColors.softBlueDeep,
+                        color: configured
+                            ? AppColors.mintDeep
+                            : AppColors.softBlueDeep,
                         borderRadius: BorderRadius.circular(AppThemeRadius.s),
                       ),
                       child: const Text('保存',
@@ -265,15 +276,13 @@ class _TodaySummary extends StatelessWidget {
           children: [
             Text(value,
                 style: TextStyle(
-                    color: color,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800)),
+                    color: color, fontSize: 20, fontWeight: FontWeight.w800)),
             const SizedBox(width: 2),
             const Padding(
               padding: EdgeInsets.only(bottom: 2),
               child: Text('kcal',
-                  style: TextStyle(
-                      color: AppColors.textSecondary, fontSize: 11)),
+                  style:
+                      TextStyle(color: AppColors.textSecondary, fontSize: 11)),
             ),
           ],
         ),
@@ -311,7 +320,8 @@ class _ActionCards extends StatelessWidget {
               subtitle: '拍照识别运动',
               color: AppColors.mint,
               deepColor: AppColors.mintDeep,
-              onTap: () => _pickAndRecognize(context, AiRecognitionType.exercise),
+              onTap: () =>
+                  _pickAndRecognize(context, AiRecognitionType.exercise),
             ),
           ),
         ],
@@ -339,9 +349,7 @@ class _ActionCards extends StatelessWidget {
           const SizedBox(height: 10),
           Text(title,
               style: TextStyle(
-                  color: deepColor,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700)),
+                  color: deepColor, fontSize: 15, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(subtitle,
               style: const TextStyle(
@@ -525,21 +533,31 @@ class _ResultSheet extends StatefulWidget {
 class _ResultSheetState extends State<_ResultSheet> {
   late double _amount;
   late TextEditingController _nameCtrl;
+  late TextEditingController _amountCtrl;
 
   @override
   void initState() {
     super.initState();
+    // 食物默认 150g,运动默认 30 次
     _amount = widget.result.type == AiRecognitionType.food ? 150 : 30;
     _nameCtrl = TextEditingController(text: widget.result.name);
+    _amountCtrl = TextEditingController(text: _amount.round().toString());
   }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _amountCtrl.dispose();
     super.dispose();
   }
 
+  /// 总热量(kcal)
+  /// 食物: value(kcal/100g) * amount(g) / 100
+  /// 运动: value(kcal/次) * amount(次)
   int get _totalCalories {
+    if (widget.result.type == AiRecognitionType.food) {
+      return (widget.result.value * _amount / 100).round();
+    }
     return (widget.result.value * _amount).round();
   }
 
@@ -550,10 +568,30 @@ class _ResultSheetState extends State<_ResultSheet> {
     return const Color(0xFFFFB380);
   }
 
+  /// 同步滑块和输入框
+  void _setAmount(double v, {bool fromInput = false}) {
+    setState(() {
+      _amount = v;
+      if (!fromInput) {
+        _amountCtrl.text = v.round().toString();
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final isFood = widget.result.type == AiRecognitionType.food;
     final lowConfidence = widget.result.confidence < 0.8;
+    // 单位与文案
+    final String unit = isFood ? '克' : '次';
+    final String unitSymbol = isFood ? 'g' : '次';
+    final String amountLabel = isFood ? '本次食物摄入量' : '本次运动量';
+    final String valueUnitLabel = isFood
+        ? '${widget.result.value.toStringAsFixed(0)} kcal / 100g'
+        : '${widget.result.value.toStringAsFixed(2)} kcal / 次';
+    // 滑块范围
+    final double minAmt = isFood ? 10 : 1;
+    final double maxAmt = isFood ? 1000 : 200;
 
     return Container(
       decoration: const BoxDecoration(
@@ -607,8 +645,7 @@ class _ResultSheetState extends State<_ResultSheet> {
                                       ),
                                     )
                                   : const Icon(Icons.image_outlined,
-                                      size: 32,
-                                      color: AppColors.textDisabled),
+                                      size: 32, color: AppColors.textDisabled),
                             ),
                             Positioned(
                               right: 0,
@@ -643,9 +680,7 @@ class _ResultSheetState extends State<_ResultSheet> {
                                       fontWeight: FontWeight.w700)),
                               const SizedBox(height: 4),
                               Text(
-                                isFood
-                                    ? '${widget.result.value.toStringAsFixed(0)} kcal / 100g'
-                                    : '${widget.result.value.toStringAsFixed(0)} kcal / 分钟',
+                                valueUnitLabel,
                                 style: const TextStyle(
                                     color: AppColors.textSecondary,
                                     fontSize: 12),
@@ -677,14 +712,44 @@ class _ResultSheetState extends State<_ResultSheet> {
                       ],
                     ),
                     const SizedBox(height: 16),
+                    // 提醒文案:本次食物摄入量 / 本次运动量
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: isFood ? AppColors.softBlue : AppColors.mint,
+                        borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit_note,
+                              size: 14,
+                              color: isFood
+                                  ? AppColors.softBlueDeep
+                                  : AppColors.mintDeep),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '请输入$amountLabel(单位:$unit)',
+                              style: TextStyle(
+                                  color: isFood
+                                      ? AppColors.softBlueDeep
+                                      : AppColors.mintDeep,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                     if (lowConfidence) ...[
+                      const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         decoration: BoxDecoration(
                           color: AppColors.banner,
-                          borderRadius:
-                              BorderRadius.circular(AppThemeRadius.s),
+                          borderRadius: BorderRadius.circular(AppThemeRadius.s),
                         ),
                         child: Row(
                           children: [
@@ -693,9 +758,7 @@ class _ResultSheetState extends State<_ResultSheet> {
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
-                                isFood
-                                    ? '识别信心度较低,可微调克数确认'
-                                    : '识别信心度较低,可微调时长确认',
+                                isFood ? '识别信心度较低,可微调克数确认' : '识别信心度较低,可微调次数确认',
                                 style: const TextStyle(
                                     color: AppColors.textSecondary,
                                     fontSize: 12),
@@ -704,52 +767,72 @@ class _ResultSheetState extends State<_ResultSheet> {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Text(isFood ? '克数' : '时长',
-                              style: const TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 13)),
-                          const Spacer(),
-                          Text(
-                              isFood
-                                  ? '${_amount.round()} g'
-                                  : '${_amount.round()} 分钟',
-                              style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600)),
-                        ],
-                      ),
-                      Slider(
-                        min: isFood ? 20 : 5,
-                        max: isFood ? 500 : 180,
-                        divisions: isFood ? 48 : 35,
-                        value: _amount.clamp(
-                          isFood ? 20 : 5,
-                          isFood ? 500 : 180,
-                        ),
-                        activeColor: isFood
-                            ? AppColors.softBlueDeep
-                            : AppColors.mintDeep,
-                        onChanged: (v) {
-                          setState(() => _amount = v);
-                        },
-                      ),
-                      const SizedBox(height: 4),
                     ],
+                    const SizedBox(height: 12),
+                    // 数量输入框 + 滑块(始终显示)
+                    Row(
+                      children: [
+                        Text(amountLabel,
+                            style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        SizedBox(
+                          width: 90,
+                          child: TextField(
+                            controller: _amountCtrl,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.right,
+                            decoration: InputDecoration(
+                              isDense: true,
+                              filled: true,
+                              fillColor: AppColors.cream,
+                              border: OutlineInputBorder(
+                                borderRadius:
+                                    BorderRadius.circular(AppThemeRadius.s),
+                                borderSide: BorderSide.none,
+                              ),
+                              suffixText: unitSymbol,
+                              suffixStyle: const TextStyle(
+                                  color: AppColors.textSecondary, fontSize: 12),
+                            ),
+                            style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600),
+                            onChanged: (text) {
+                              final v = double.tryParse(text);
+                              if (v != null && v >= 0) {
+                                _setAmount(v.clamp(minAmt, maxAmt),
+                                    fromInput: true);
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Slider(
+                      min: minAmt,
+                      max: maxAmt,
+                      divisions: isFood ? 99 : 199,
+                      value: _amount.clamp(minAmt, maxAmt),
+                      activeColor:
+                          isFood ? AppColors.softBlueDeep : AppColors.mintDeep,
+                      onChanged: (v) => _setAmount(v),
+                    ),
+                    const SizedBox(height: 4),
                     TextField(
                       controller: _nameCtrl,
                       onChanged: (_) => setState(() {}),
                       decoration: InputDecoration(
-                        hintText: '名称',
+                        hintText: '名称(可修改)',
                         isDense: true,
                         filled: true,
                         fillColor: AppColors.cream,
                         border: OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(AppThemeRadius.s),
+                          borderRadius: BorderRadius.circular(AppThemeRadius.s),
                           borderSide: BorderSide.none,
                         ),
                       ),
@@ -762,8 +845,10 @@ class _ResultSheetState extends State<_ResultSheet> {
                       const Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _NutritionLabel(color: Color(0xFFFFB380), label: '碳水'),
-                          _NutritionLabel(color: AppColors.mintDeep, label: '蛋白'),
+                          _NutritionLabel(
+                              color: Color(0xFFFFB380), label: '碳水'),
+                          _NutritionLabel(
+                              color: AppColors.mintDeep, label: '蛋白'),
                           _NutritionLabel(
                               color: AppColors.softBlueDeep, label: '脂肪'),
                         ],
@@ -783,8 +868,7 @@ class _ResultSheetState extends State<_ResultSheet> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
                           color: AppColors.paused,
-                          borderRadius:
-                              BorderRadius.circular(AppThemeRadius.m),
+                          borderRadius: BorderRadius.circular(AppThemeRadius.m),
                         ),
                         alignment: Alignment.center,
                         child: const Text('取消',
@@ -803,10 +887,8 @@ class _ResultSheetState extends State<_ResultSheet> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         decoration: BoxDecoration(
-                          color:
-                              isFood ? AppColors.softBlue : AppColors.mint,
-                          borderRadius:
-                              BorderRadius.circular(AppThemeRadius.m),
+                          color: isFood ? AppColors.softBlue : AppColors.mint,
+                          borderRadius: BorderRadius.circular(AppThemeRadius.m),
                         ),
                         alignment: Alignment.center,
                         child: Text('确认计入',
@@ -834,6 +916,7 @@ class _ResultSheetState extends State<_ResultSheet> {
     final name = _nameCtrl.text.trim().isEmpty
         ? widget.result.name
         : _nameCtrl.text.trim();
+    final amount = _amount.round();
 
     if (isFood) {
       s.addFoodRecord(FoodRecord(
@@ -841,7 +924,7 @@ class _ResultSheetState extends State<_ResultSheet> {
         time: DateTime.now(),
         name: name,
         calories: _totalCalories,
-        grams: _amount.round(),
+        grams: amount,
         imagePath: widget.result.imagePath,
       ));
     } else {
@@ -850,14 +933,16 @@ class _ResultSheetState extends State<_ResultSheet> {
         time: DateTime.now(),
         name: name,
         calories: _totalCalories,
-        minutes: _amount.round(),
+        reps: amount,
         imagePath: widget.result.imagePath,
       ));
     }
 
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已记录 $name $_totalCalories kcal')),
+      SnackBar(
+          content: Text(
+              '已记录 $name ${isFood ? "$amount g" : "$amount 次"} $_totalCalories kcal')),
     );
   }
 }
@@ -958,12 +1043,22 @@ class _TodayRecordList extends StatelessWidget {
     );
   }
 
+  /// 格式化时间为 HH:mm
+  String _formatTime(DateTime t) {
+    final h = t.hour.toString().padLeft(2, '0');
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
   Widget _buildItem(BuildContext context, dynamic item) {
     final isFood = item is FoodRecord;
     final name = isFood ? item.name : (item as ExerciseRecord).name;
     final calories = isFood ? item.calories : (item as ExerciseRecord).calories;
-    final subtitle =
-        isFood ? '${item.grams} g' : '${(item as ExerciseRecord).minutes} 分钟';
+    final time = isFood ? item.time : (item as ExerciseRecord).time;
+    // 食物单位:克;运动单位:次
+    final subtitle = isFood
+        ? '${item.grams} g · ${_formatTime(time)}'
+        : '${(item as ExerciseRecord).reps} 次 · ${_formatTime(time)}';
     final id = isFood ? item.id : (item as ExerciseRecord).id;
 
     return Padding(
@@ -1003,9 +1098,7 @@ class _TodayRecordList extends StatelessWidget {
           ),
           Text('$calories kcal',
               style: TextStyle(
-                  color: isFood
-                      ? AppColors.softBlueDeep
-                      : AppColors.mintDeep,
+                  color: isFood ? AppColors.softBlueDeep : AppColors.mintDeep,
                   fontSize: 14,
                   fontWeight: FontWeight.w700)),
           const SizedBox(width: 4),

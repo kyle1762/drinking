@@ -71,21 +71,26 @@ class FeishuService {
   /// 获取 tenant_access_token(用用户配置的凭证)
   /// [appId]/[appSecret] 必填,由调用方从本地存储读取后传入
   /// 返回 token 字符串,失败返回 null
+  /// 增加 10s 超时控制,防止后台 isolate 永久阻塞
   static Future<String?> getTenantAccessToken({
     required String appId,
     required String appSecret,
   }) async {
     try {
-      final resp = await http.post(
-        Uri.parse('$_baseUrl/auth/v3/tenant_access_token/internal'),
-        headers: {'Content-Type': 'application/json; charset=utf-8'},
-        body: jsonEncode({'app_id': appId, 'app_secret': appSecret}),
-      );
-      debugPrint('[FeishuToken] statusCode=${resp.statusCode}, body=${resp.body}');
+      final resp = await http
+          .post(
+            Uri.parse('$_baseUrl/auth/v3/tenant_access_token/internal'),
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode({'app_id': appId, 'app_secret': appSecret}),
+          )
+          .timeout(const Duration(seconds: 10));
+      debugPrint(
+          '[FeishuToken] statusCode=${resp.statusCode}, body=${resp.body}');
       if (resp.statusCode != 200) return null;
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       if (data['code'] != 0) {
-        debugPrint('[FeishuToken] 获取失败: code=${data['code']}, msg=${data['msg']}');
+        debugPrint(
+            '[FeishuToken] 获取失败: code=${data['code']}, msg=${data['msg']}');
         return null;
       }
       return data['tenant_access_token'] as String?;
@@ -127,7 +132,10 @@ class FeishuService {
     }
   }
 
-  /// 通过手机号查询用户 open_id(兼容旧流程)
+  /// 通过手机号查询用户 open_id
+  /// 适用于 OAuth 重定向 URL 未配置的场景
+  /// [phone] 需为不带国家码的手机号(如 13800138000)
+  /// 返回 open_id 字符串,失败返回 null
   static Future<String?> getOpenIdByPhone({
     required String token,
     required String phone,
@@ -139,42 +147,72 @@ class FeishuService {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json; charset=utf-8',
         },
-        body: jsonEncode({'mobiles': [phone]}),
+        body: jsonEncode({
+          'mobiles': [phone]
+        }),
       );
+      debugPrint(
+          '[FeishuPhone] statusCode=${resp.statusCode}, body=${resp.body}');
       if (resp.statusCode != 200) return null;
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      if (data['code'] != 0) return null;
+      if (data['code'] != 0) {
+        debugPrint(
+            '[FeishuPhone] 查询失败: code=${data['code']}, msg=${data['msg']}');
+        return null;
+      }
       final userList = data['data']?['user_list'] as List?;
-      if (userList == null || userList.isEmpty) return null;
-      return userList[0]['user']?['open_id'] as String?;
-    } catch (_) {
+      if (userList == null || userList.isEmpty) {
+        debugPrint('[FeishuPhone] user_list 为空');
+        return null;
+      }
+      // 飞书 v3 batch_get_id 返回的 user_list 元素直接包含 open_id 字段
+      // 格式: [{ "user_id": "...", "open_id": "ou_xxx", "mobile": "..." }]
+      // 注意: 不是嵌套在 'user' 字段里
+      final openId = userList[0]['open_id'] as String?;
+      if (openId == null || openId.isEmpty) {
+        debugPrint('[FeishuPhone] open_id 为空, user_list[0]=${userList[0]}');
+      }
+      return openId;
+    } catch (e) {
+      debugPrint('[FeishuPhone] 异常: $e');
       return null;
     }
   }
 
   /// 发送文本消息给指定用户
   /// 返回 (success, message),message 包含失败原因
+  /// 增加 10s 超时控制,防止网络异常时永久阻塞后台 isolate
   static Future<(bool success, String message)> sendMessageWithDetail({
     required String token,
     required String openId,
     required String text,
   }) async {
     try {
-      final resp = await http.post(
-        Uri.parse('$_baseUrl/im/v1/messages?receive_id_type=open_id'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json; charset=utf-8',
-        },
-        body: jsonEncode({
-          'receive_id': openId,
-          'msg_type': 'text',
-          'content': jsonEncode({'text': text}),
-        }),
-      );
-      debugPrint('[FeishuMsg] statusCode=${resp.statusCode}, body=${resp.body}');
+      final resp = await http
+          .post(
+            Uri.parse('$_baseUrl/im/v1/messages?receive_id_type=open_id'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: jsonEncode({
+              'receive_id': openId,
+              'msg_type': 'text',
+              'content': jsonEncode({'text': text}),
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+      debugPrint(
+          '[FeishuMsg] statusCode=${resp.statusCode}, body=${resp.body}');
       if (resp.statusCode != 200) {
-        return (false, 'HTTP ${resp.statusCode}');
+        // 尝试解析 body 获取飞书错误信息
+        try {
+          final errData = jsonDecode(resp.body) as Map<String, dynamic>;
+          final errMsg = errData['msg'] as String? ?? '';
+          return (false, 'HTTP ${resp.statusCode}: $errMsg');
+        } catch (_) {
+          return (false, 'HTTP ${resp.statusCode}');
+        }
       }
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       final code = data['code'];
@@ -195,7 +233,8 @@ class FeishuService {
     required String openId,
     required String text,
   }) async {
-    final result = await sendMessageWithDetail(token: token, openId: openId, text: text);
+    final result =
+        await sendMessageWithDetail(token: token, openId: openId, text: text);
     return result.$1;
   }
 
@@ -214,9 +253,17 @@ class FeishuService {
   /// 后台闹钟触发时调用:发送飞书消息
   /// DND/时段/重复周期检查已由 NotificationService.onAlarmFired 完成
   /// 本方法仅负责凭证检查和消息发送,全程不依赖 AppState/Provider
+  ///
+  /// 增强可靠性(解决「经常性推送失败」问题):
+  /// - HTTP 请求全部带 10s 超时,避免后台 isolate 永久阻塞
+  /// - token 失效或发送失败时自动重试,最多 3 次,间隔递增(2s/4s/6s)
+  /// - token 失效(code 99991663/99991661 等)时强制重新获取 token
+  /// - 详细记录每次失败原因到日志
   static Future<void> pushReminderFromBackground() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // reload() 确保后台 isolate 读到主 isolate 最新写入的配置
+      await prefs.reload();
 
       // 1. 检查推送是否开启(默认 true,避免旧版本升级后值缺失导致推送失效)
       final pushEnabled = prefs.getBool(_kFeishuPushEnabled) ?? true;
@@ -252,22 +299,73 @@ class FeishuService {
       // 4. 构建消息(含今日统计)
       final message = _buildReminderMessage(prefs);
 
-      // 5. 获取 token 并发送(带一次重试)
-      debugPrint('[FeishuPush] 正在获取 token...');
+      // 5. 获取 token 并发送,最多重试 3 次,间隔递增
+      // 重试场景:网络异常、token 获取失败、token 失效、发送 HTTP 非 200
+      const maxRetries = 3;
+      const retryDelays = [Duration(seconds: 2), Duration(seconds: 4), Duration(seconds: 6)];
       String? token = await getTenantAccessToken(appId: appId, appSecret: appSecret);
       if (token == null) {
-        debugPrint('[FeishuPush] 首次获取 token 失败,2秒后重试');
-        await Future.delayed(const Duration(seconds: 2));
-        token = await getTenantAccessToken(appId: appId, appSecret: appSecret);
-      }
-      if (token == null) {
-        debugPrint('[FeishuPush] 获取 token 失败,放弃推送');
-        return;
+        debugPrint('[FeishuPush] 首次获取 token 失败');
       }
 
-      debugPrint('[FeishuPush] 正在发送消息...');
-      final ok = await sendMessage(token: token, openId: openId, text: message);
-      debugPrint('[FeishuPush] 发送结果: $ok');
+      for (int attempt = 0; attempt < maxRetries; attempt++) {
+        if (token == null) {
+          // token 获取失败时等待后重试
+          if (attempt < maxRetries - 1) {
+            debugPrint('[FeishuPush] ${attempt + 1}/$maxRetries 等待 ${retryDelays[attempt].inSeconds}s 后重新获取 token');
+            await Future.delayed(retryDelays[attempt]);
+            token = await getTenantAccessToken(appId: appId, appSecret: appSecret);
+          }
+          continue;
+        }
+
+        debugPrint('[FeishuPush] 第 ${attempt + 1}/$maxRetries 次发送消息...');
+        final result = await sendMessageWithDetail(
+          token: token,
+          openId: openId,
+          text: message,
+        );
+
+        if (result.$1) {
+          debugPrint('[FeishuPush] 发送成功(第 ${attempt + 1} 次尝试)');
+          return;
+        }
+
+        final errMsg = result.$2;
+        debugPrint('[FeishuPush] 第 ${attempt + 1} 次发送失败: $errMsg');
+
+        // 判断是否 token 失效(需要重新获取)
+        // 飞书 token 失效错误码: 99991663(token 无效)、99991661(token 过期)、99991664(token 已被吊销)
+        final tokenInvalid = errMsg.contains('99991663') ||
+            errMsg.contains('99991661') ||
+            errMsg.contains('99991664') ||
+            errMsg.contains('token') ||
+            errMsg.contains('Token');
+
+        // 判断是否 open_id 不存在或权限不足(这类错误重试无意义,直接放弃)
+        final openIdInvalid = errMsg.contains('230001') ||
+            errMsg.contains('230002') ||
+            errMsg.contains('open_id') ||
+            errMsg.contains('receive_id');
+
+        if (openIdInvalid) {
+          debugPrint('[FeishuPush] open_id 错误或权限不足,放弃推送: $errMsg');
+          return;
+        }
+
+        if (attempt < maxRetries - 1) {
+          if (tokenInvalid) {
+            debugPrint('[FeishuPush] token 失效,等待 ${retryDelays[attempt].inSeconds}s 后重新获取');
+            await Future.delayed(retryDelays[attempt]);
+            token = await getTenantAccessToken(appId: appId, appSecret: appSecret);
+          } else {
+            debugPrint('[FeishuPush] 等待 ${retryDelays[attempt].inSeconds}s 后重试');
+            await Future.delayed(retryDelays[attempt]);
+          }
+        }
+      }
+
+      debugPrint('[FeishuPush] 已达最大重试次数,放弃推送');
     } catch (e, st) {
       debugPrint('[FeishuPush] 推送异常: $e\n$st');
     }
@@ -275,8 +373,7 @@ class FeishuService {
 
   /// 构建提醒消息,包含今日喝水统计
   static String _buildReminderMessage(SharedPreferences prefs) {
-    final pushText =
-        prefs.getString(_kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧';
+    final pushText = prefs.getString(_kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧';
 
     // 读取今日统计
     final (todayTotal, todayGoal) = _loadTodayStats(prefs);
@@ -333,8 +430,11 @@ class FeishuService {
     final appId = prefs.getString(_kFeishuAppId);
     final appSecret = prefs.getString(_kFeishuAppSecret);
     final openId = prefs.getString(_kFeishuOpenId);
-    return appId != null && appId.isNotEmpty &&
-        appSecret != null && appSecret.isNotEmpty &&
-        openId != null && openId.isNotEmpty;
+    return appId != null &&
+        appId.isNotEmpty &&
+        appSecret != null &&
+        appSecret.isNotEmpty &&
+        openId != null &&
+        openId.isNotEmpty;
   }
 }

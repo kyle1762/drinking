@@ -84,7 +84,10 @@ class AppState extends ChangeNotifier {
   /// 上次提醒时间
   DateTime? _lastReminderTime;
 
-  /// 从 SharedPreferences 同步今日提醒次数(App 回前台时调用)
+  /// 下次闹钟触发时间(由 AlarmService 写入 SharedPreferences,精确值)
+  DateTime? _nextAlarmTime;
+
+  /// 从 SharedPreferences 同步今日提醒次数和下次提醒时间(App 回前台/定时刷新时调用)
   void syncReminderCount() {
     Future.microtask(() async {
       final prefs = await SharedPreferences.getInstance();
@@ -93,6 +96,7 @@ class AppState extends ChangeNotifier {
       final savedDateStr = prefs.getString('todayReminderDate');
       final count = prefs.getInt('todayReminderCount') ?? 0;
       final lastStr = prefs.getString('lastReminderTime');
+      final nextStr = prefs.getString('nextAlarmTime');
 
       // 日期变更则重置
       if (savedDateStr != todayStr) {
@@ -102,6 +106,7 @@ class AppState extends ChangeNotifier {
       }
 
       _lastReminderTime = lastStr != null ? DateTime.tryParse(lastStr) : null;
+      _nextAlarmTime = nextStr != null ? DateTime.tryParse(nextStr) : null;
       notifyListeners();
     });
   }
@@ -110,15 +115,20 @@ class AppState extends ChangeNotifier {
   int _drinkPulse = 0;
   int get drinkPulse => _drinkPulse;
 
-  /// 下次提醒时间(基于上次提醒时间 + 间隔计算,而非当前时间)
+  /// 下次提醒时间
+  /// 优先使用 AlarmService 写入的精确闹钟时间(实时同步),无则回退到计算值
   String get nextReminderTime {
     if (!_reminderEnabled || _reminderPaused) return '已暂停';
     final now = DateTime.now();
-    // 如果有上次提醒时间,基于它计算下次;否则基于当前时间
+    // 优先使用 AlarmService 注册时写入的精确下次闹钟时间
+    if (_nextAlarmTime != null && _nextAlarmTime!.isAfter(now)) {
+      return '${_nextAlarmTime!.hour.toString().padLeft(2, '0')}:${_nextAlarmTime!.minute.toString().padLeft(2, '0')}';
+    }
+    // 回退:基于上次提醒时间 + 间隔计算
     final base = _lastReminderTime ?? now;
     final next = base.add(Duration(minutes: _loopInterval));
-    // 如果算出的时间已经过了(比如App长时间未运行),则用当前时间 + 间隔
-    final actualNext = next.isAfter(now) ? next : now.add(Duration(minutes: _loopInterval));
+    final actualNext =
+        next.isAfter(now) ? next : now.add(Duration(minutes: _loopInterval));
     return '${actualNext.hour.toString().padLeft(2, '0')}:${actualNext.minute.toString().padLeft(2, '0')}';
   }
 
@@ -146,13 +156,20 @@ class AppState extends ChangeNotifier {
 
   // ============ 免打扰 ============
   bool _nightDnd = true;
-  bool _noonDnd = true;
+  bool _noonDnd = false; // 默认关闭,首启时主动询问用户
+  bool _hasPromptedNoonDnd = false; // 是否已弹过午休免打扰询问
   int? _focusMinutes; // 专注模式剩余分钟,null=未开启
 
   bool get nightDnd => _nightDnd;
   bool get noonDnd => _noonDnd;
+  bool get hasPromptedNoonDnd => _hasPromptedNoonDnd;
   bool get focusModeActive => _focusMinutes != null;
   int? get focusMinutes => _focusMinutes;
+
+  // ============ 扬声器提醒 ============
+  /// 是否通过手机扬声器播放提醒音效(用户可自行关闭)
+  bool _speakerEnabled = true;
+  bool get speakerEnabled => _speakerEnabled;
 
   // ============ 喝水记录 ============
   final List<WaterRecord> _records = [];
@@ -180,7 +197,8 @@ class AppState extends ChangeNotifier {
   final List<ExerciseRecord> _exerciseRecords = [];
 
   List<FoodRecord> get foodRecords => List.unmodifiable(_foodRecords);
-  List<ExerciseRecord> get exerciseRecords => List.unmodifiable(_exerciseRecords);
+  List<ExerciseRecord> get exerciseRecords =>
+      List.unmodifiable(_exerciseRecords);
 
   /// 今日饮食记录
   List<FoodRecord> get todayFoodRecords {
@@ -250,6 +268,8 @@ class AppState extends ChangeNotifier {
     _feishuPushOnPunch = d.feishuPushOnPunch;
     _nightDnd = d.nightDnd;
     _noonDnd = d.noonDnd;
+    _hasPromptedNoonDnd = d.hasPromptedNoonDnd;
+    _speakerEnabled = d.speakerEnabled;
     _rememberSyncToFeishu = d.rememberSyncFeishu;
     // 仅加载最近 60 天的记录,避免无限增长
     final cutoff = DateTime.now().subtract(const Duration(days: 60));
@@ -330,6 +350,44 @@ class AppState extends ChangeNotifier {
       appId: _feishuAppId,
       appSecret: _feishuAppSecret,
       openId: userInfo.openId,
+    );
+
+    return (true, '飞书登录成功!提醒将自动推送到飞书');
+  }
+
+  /// 通过手机号登录飞书(不依赖 OAuth 重定向 URL)
+  /// 流程: 凭证 → tenant_access_token → 手机号查 open_id → 绑定
+  /// 适用于 OAuth 重定向 URL 未配置的场景
+  /// 返回 (success, message)
+  Future<(bool success, String message)> loginWithPhone(String phone) async {
+    if (_feishuAppId.isEmpty || _feishuAppSecret.isEmpty) {
+      return (false, '请先填写 App ID 和 App Secret 并保存');
+    }
+
+    // 1. 获取 tenant_access_token
+    final token = await FeishuService.getTenantAccessToken(
+      appId: _feishuAppId,
+      appSecret: _feishuAppSecret,
+    );
+    if (token == null) {
+      return (false, '获取访问令牌失败,请检查凭证');
+    }
+
+    // 2. 通过手机号查询 open_id
+    final openId = await FeishuService.getOpenIdByPhone(
+      token: token,
+      phone: phone,
+    );
+    if (openId == null) {
+      return (false, '未找到该手机号对应的飞书用户,请确认手机号正确且与机器人同租户');
+    }
+
+    // 3. 绑定飞书
+    bindFeishu(
+      name: '飞书用户',
+      appId: _feishuAppId,
+      appSecret: _feishuAppSecret,
+      openId: openId,
     );
 
     return (true, '飞书登录成功!提醒将自动推送到飞书');
@@ -427,6 +485,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 应用间隔设置(统一入口):保存配置 + 重新注册闹钟 + 立即同步下次提醒时间
+  /// 解决「设置后下次提醒时间不刷新」问题:仅在 setLoopInterval 后 UI 不会重读 nextAlarmTime
+  /// 本方法等待闹钟注册完成,然后调用 syncReminderCount() 刷新 _nextAlarmTime 字段
+  /// 返回 true 表示闹钟注册成功
+  Future<bool> applyLoopInterval(int minutes) async {
+    _loopInterval = minutes;
+    StorageService.saveLoopInterval(minutes);
+    notifyListeners();
+    // 提醒关闭/暂停时不注册闹钟,但仍刷新 UI 显示
+    if (!_reminderEnabled || _reminderPaused) {
+      return false;
+    }
+    final ok = await AlarmService.scheduleLoop(minutes);
+    // 立即同步下次提醒时间(从 SharedPreferences 读取 AlarmService 写入的 nextAlarmTime)
+    syncReminderCount();
+    return ok;
+  }
+
   void addSingleReminder(DateTime time) {
     final r = SingleReminder(
       id: 's${DateTime.now().millisecondsSinceEpoch}',
@@ -515,7 +591,8 @@ class AppState extends ChangeNotifier {
 
   /// 保存用户填写的飞书机器人凭证(App ID / App Secret)
   /// 如果凭证发生变更,清除旧的 openId,要求用户重新 OAuth 登录
-  void saveFeishuCredentials({required String appId, required String appSecret}) {
+  void saveFeishuCredentials(
+      {required String appId, required String appSecret}) {
     final changed = _feishuAppId != appId || _feishuAppSecret != appSecret;
     _feishuAppId = appId;
     _feishuAppSecret = appSecret;
@@ -544,7 +621,8 @@ class AppState extends ChangeNotifier {
 
   /// 发送飞书消息(前台调用)
   /// 返回 (success, message),message 包含失败原因
-  Future<(bool success, String message)> sendFeishuMessageWithDetail(String text) async {
+  Future<(bool success, String message)> sendFeishuMessageWithDetail(
+      String text) async {
     if (!isFeishuBound) return (false, '飞书未绑定,请先登录');
     if (_feishuAppId.isEmpty || _feishuAppSecret.isEmpty) {
       return (false, 'App ID/Secret 未配置');
@@ -582,6 +660,20 @@ class AppState extends ChangeNotifier {
   void setNoonDnd(bool v) {
     _noonDnd = v;
     StorageService.saveNoonDnd(v);
+    notifyListeners();
+  }
+
+  /// 标记已弹过午休免打扰询问(首启时调用一次)
+  void markNoonDndPrompted() {
+    _hasPromptedNoonDnd = true;
+    StorageService.saveHasPromptedNoonDnd(true);
+    notifyListeners();
+  }
+
+  // ---- 扬声器提醒 ----
+  void setSpeakerEnabled(bool v) {
+    _speakerEnabled = v;
+    StorageService.saveSpeakerEnabled(v);
     notifyListeners();
   }
 
@@ -665,9 +757,20 @@ class AppState extends ChangeNotifier {
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
     if (_nightDnd && (hm >= 22 * 60 || hm < 7 * 60)) return true;
-    if (_noonDnd && hm >= 12 * 60 + 30 && hm < 13 * 60 + 30) return true;
+    // 午休免打扰:12:30 ~ 14:30
+    if (_noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return true;
     if (_focusMinutes != null) return true;
     return false;
+  }
+
+  /// 当前免打扰状态描述(供 UI 显示)
+  String get dndStatusText {
+    final now = DateTime.now();
+    final hm = now.hour * 60 + now.minute;
+    if (_focusMinutes != null) return '专注模式中';
+    if (_nightDnd && (hm >= 22 * 60 || hm < 7 * 60)) return '夜间免打扰';
+    if (_noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return '午休免打扰';
+    return '';
   }
 
   // ===================== 统计辅助 =====================

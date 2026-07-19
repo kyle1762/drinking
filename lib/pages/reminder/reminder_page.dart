@@ -15,17 +15,25 @@ class ReminderPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
     return Scaffold(
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.only(bottom: 120),
           children: [
             _SplitHeader(),
+            // 免打扰状态提示(仅在免打扰时段显示)
+            if (s.inDndPeriod)
+              SoftBanner(
+                icon: Icons.do_not_disturb_on_outlined,
+                text: '当前处于${s.dndStatusText},提醒将静音(闹钟仍正常触发)',
+              ),
             const PunchButton(),
             const SizedBox(height: 8),
             const RecordList(),
             _ReminderModule(),
             _TimeRangeModule(),
+            _DndModule(),
             _EarphoneModule(),
             const SizedBox(height: 16),
             _BottomActions(),
@@ -47,49 +55,49 @@ class _SplitHeader extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-          // 左:今日概览
-          Expanded(
-            child: CreamCard(
-              color: AppColors.softBlue,
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.water_drop_outlined,
-                          size: 16, color: AppColors.softBlueDeep),
-                      const SizedBox(width: 4),
-                      const Expanded(
-                        child: Text('今日概览',
-                            style: TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700)),
-                      ),
-                      StatusTag(
-                        text: s.reminderPaused
-                            ? '已暂停'
-                            : (s.reminderEnabled ? '提醒中' : '已暂停'),
-                        active: s.reminderEnabled && !s.reminderPaused,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _overviewItem('下次提醒', s.nextReminderTime),
-                  _overviewItem('当前间隔', '${s.loopInterval} 分钟'),
-                  _overviewItem('今日已提醒', '${s.todayReminderCount} 次'),
-                ],
+            // 左:今日概览
+            Expanded(
+              child: CreamCard(
+                color: AppColors.softBlue,
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.water_drop_outlined,
+                            size: 16, color: AppColors.softBlueDeep),
+                        const SizedBox(width: 4),
+                        const Expanded(
+                          child: Text('今日概览',
+                              style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                        StatusTag(
+                          text: s.reminderPaused
+                              ? '已暂停'
+                              : (s.reminderEnabled ? '提醒中' : '已暂停'),
+                          active: s.reminderEnabled && !s.reminderPaused,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _overviewItem('下次提醒', s.nextReminderTime),
+                    _overviewItem('当前间隔', '${s.loopInterval} 分钟'),
+                    _overviewItem('今日已提醒', '${s.todayReminderCount} 次'),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          // 右:云朵图像
-          Expanded(
-            child: _CloudCard(),
-          ),
-        ],
+            const SizedBox(width: 10),
+            // 右:云朵图像
+            Expanded(
+              child: _CloudCard(),
+            ),
+          ],
         ),
       ),
     );
@@ -201,13 +209,14 @@ class _LoopReminder extends StatelessWidget {
                 final selected = s.loopInterval == m;
                 return Expanded(
                   child: Padding(
-                    padding: EdgeInsets.only(right: i < _quick.length - 1 ? 8 : 0),
+                    padding:
+                        EdgeInsets.only(right: i < _quick.length - 1 ? 8 : 0),
                     child: _Chip(
                       label: '$m分钟',
                       selected: selected,
                       onTap: () {
-                        s.setLoopInterval(m);
-                        AlarmService.scheduleLoop(m);
+                        // 统一入口:保存配置 + 重注册闹钟 + 同步下次提醒时间
+                        s.applyLoopInterval(m);
                       },
                     ),
                   ),
@@ -254,7 +263,8 @@ class _LoopReminder extends StatelessWidget {
                     value: s.loopInterval.toDouble().clamp(1, 240),
                     onChanged: (v) => s.setLoopInterval(v.round()),
                     onChangeEnd: (v) {
-                      AlarmService.scheduleLoop(v.round());
+                      // 滑动结束时统一应用:重注册闹钟 + 同步下次提醒时间
+                      s.applyLoopInterval(v.round());
                     },
                   ),
                 ),
@@ -345,20 +355,20 @@ class _LoopReminder extends StatelessWidget {
   /// 调整间隔:delta 可正可负,范围 1~240
   void _adjustInterval(AppState s, int delta) {
     final newInterval = (s.loopInterval + delta).clamp(1, 240);
-    s.setLoopInterval(newInterval);
-    AlarmService.scheduleLoop(newInterval);
+    // 统一入口:保存配置 + 重注册闹钟 + 同步下次提醒时间
+    s.applyLoopInterval(newInterval);
   }
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip(
-      {required this.label, required this.selected, required this.onTap});
+  const _Chip({required this.label, required this.selected, this.onTap});
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final disabled = onTap == null;
     return Material(
       color: selected ? AppColors.softBlue : AppColors.paused,
       borderRadius: BorderRadius.circular(AppThemeRadius.s),
@@ -369,8 +379,11 @@ class _Chip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           child: Text(label,
               style: TextStyle(
-                color:
-                    selected ? AppColors.softBlueDeep : AppColors.textSecondary,
+                color: disabled
+                    ? AppColors.textDisabled
+                    : (selected
+                        ? AppColors.softBlueDeep
+                        : AppColors.textSecondary),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               )),
@@ -507,20 +520,135 @@ class _TimeRangeModule extends StatelessWidget {
   }
 }
 
-/// 治愈音效设置 - 仅保留音效切换
+/// 免打扰设置 - 午休/夜间开关 + 时间段说明
+class _DndModule extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    return Column(
+      children: [
+        const SectionTitle('免打扰'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: CreamCard(
+            child: Column(
+              children: [
+                // 午休免打扰
+                _dndRow(
+                  icon: Icons.free_breakfast_outlined,
+                  title: '午休免打扰',
+                  timeRange: '12:30 ~ 14:30',
+                  value: s.noonDnd,
+                  onChanged: s.setNoonDnd,
+                  activeColor: AppColors.softBlueDeep,
+                ),
+                const Divider(height: 1),
+                // 夜间免打扰
+                _dndRow(
+                  icon: Icons.nightlight_round_outlined,
+                  title: '夜间免打扰',
+                  timeRange: '22:00 ~ 次日 07:00',
+                  value: s.nightDnd,
+                  onChanged: s.setNightDnd,
+                  activeColor: AppColors.mintDeep,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20),
+          child: Text('免打扰时段内,闹钟仍正常触发但会静音(通知栏可见)',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+        ),
+      ],
+    );
+  }
+
+  Widget _dndRow({
+    required IconData icon,
+    required String title,
+    required String timeRange,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required Color activeColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: activeColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600)),
+                Text('时段:$timeRange',
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            activeThumbColor: activeColor,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 扬声器 & 治愈音效设置 - 顶部扬声器总开关 + 音效切换
 class _EarphoneModule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
     return Column(
       children: [
-        const SectionTitle('治愈音效'),
+        const SectionTitle('扬声器 & 治愈音效'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: CreamCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // 扬声器提醒总开关(用户可自行关闭)
+                Row(
+                  children: [
+                    const Icon(Icons.volume_up_outlined,
+                        size: 20, color: AppColors.softBlueDeep),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('扬声器提醒',
+                              style: TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w600)),
+                          Text('关闭后仅显示通知,不播放音效',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 11)),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: s.speakerEnabled,
+                      onChanged: s.setSpeakerEnabled,
+                    ),
+                  ],
+                ),
+                const Divider(height: 24),
                 const Row(
                   children: [
                     Icon(Icons.music_note_rounded,
@@ -544,13 +672,23 @@ class _EarphoneModule extends StatelessWidget {
                     return _Chip(
                       label: sd.label,
                       selected: selected,
-                      onTap: () {
-                        s.setSound(sd);
-                        AudioService.playSound(sd, volume: s.earphoneVolume);
-                      },
+                      onTap: s.speakerEnabled
+                          ? () {
+                              s.setSound(sd);
+                              AudioService.playSound(sd,
+                                  volume: s.earphoneVolume);
+                            }
+                          : null,
                     );
                   }).toList(),
                 ),
+                if (!s.speakerEnabled)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 10),
+                    child: Text('扬声器已关闭,音效切换暂不可用',
+                        style: TextStyle(
+                            color: AppColors.textSecondary, fontSize: 11)),
+                  ),
               ],
             ),
           ),
@@ -575,9 +713,28 @@ class _BottomActions extends StatelessWidget {
                 final s = context.read<AppState>();
                 final ok = s.reminderEnabled && !s.reminderPaused;
                 if (ok) {
-                  await AlarmService.scheduleLoop(s.loopInterval);
+                  // 统一入口:保存配置 + 重注册闹钟 + 同步下次提醒时间
+                  final success = await s.applyLoopInterval(s.loopInterval);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(success
+                            ? '设置已保存,下次提醒:${s.nextReminderTime}'
+                            : '设置已保存(闹钟注册失败,请检查权限)'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  }
                 } else {
                   await AlarmService.cancelLoop();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('提醒已关闭/暂停,闹钟已取消'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
                 }
               },
               borderRadius: AppThemeRadius.m,
@@ -603,7 +760,8 @@ class _BottomActions extends StatelessWidget {
               if (s.reminderPaused) {
                 await AlarmService.cancelLoop();
               } else {
-                await AlarmService.scheduleLoop(s.loopInterval);
+                // 恢复时使用统一入口,确保下次提醒时间同步刷新
+                await s.applyLoopInterval(s.loopInterval);
               }
             },
             borderRadius: AppThemeRadius.m,

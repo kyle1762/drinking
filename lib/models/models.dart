@@ -2,8 +2,10 @@
 enum AccountState {
   /// 游客模式
   guest,
+
   /// 已登录未绑飞书
   loggedIn,
+
   /// 已登录+绑定飞书
   boundFeishu,
 }
@@ -147,7 +149,7 @@ enum AiRecognitionType { food, exercise }
 class AiRecognitionResult {
   final AiRecognitionType type;
   final String name;
-  final double value; // 食物: kcal/100g; 运动: kcal/分钟
+  final double value; // 食物: kcal/100g; 运动: kcal/次
   final double confidence; // 0~1 信心度
   final String? imagePath; // 本地图片路径
 
@@ -205,7 +207,7 @@ class ExerciseRecord {
   final DateTime time;
   final String name;
   final int calories; // 总消耗 kcal
-  final int minutes; // 分钟数
+  final int reps; // 次数
   final String? imagePath;
 
   ExerciseRecord({
@@ -213,7 +215,7 @@ class ExerciseRecord {
     required this.time,
     required this.name,
     required this.calories,
-    required this.minutes,
+    required this.reps,
     this.imagePath,
   });
 
@@ -222,7 +224,7 @@ class ExerciseRecord {
         'time': time.toIso8601String(),
         'name': name,
         'calories': calories,
-        'minutes': minutes,
+        'reps': reps,
         'imagePath': imagePath,
       };
 
@@ -232,7 +234,10 @@ class ExerciseRecord {
       time: DateTime.parse(json['time'] as String),
       name: json['name'] as String,
       calories: (json['calories'] as num).toInt(),
-      minutes: (json['minutes'] as num).toInt(),
+      // 兼容旧数据:优先读 reps,无则回退到 minutes
+      reps: (json['reps'] as num?)?.toInt() ??
+          (json['minutes'] as num?)?.toInt() ??
+          0,
       imagePath: json['imagePath'] as String?,
     );
   }

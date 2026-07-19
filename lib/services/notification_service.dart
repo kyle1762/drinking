@@ -14,9 +14,12 @@ class NotificationService {
   static bool _initialized = false;
 
   /// 通知渠道 ID
-  static const String channelId = 'drinking_reminder';
-  static const String channelName = '喝水提醒';
-  static const String channelDesc = '温柔的喝水提醒通知';
+  /// 注意: Android 8+ 渠道一旦创建 importance 不可通过代码修改
+  /// 如需提升 importance 必须更换新的渠道 ID
+  /// v3: 启用 fullScreenIntent 强制横幅显示 + 应用更名
+  static const String channelId = 'drinking_reminder_v3';
+  static const String channelName = '喝水小精灵提醒';
+  static const String channelDesc = '温柔的喝水小精灵提醒通知';
 
   // SharedPreferences key 常量(与 StorageService 保持一致)
   static const _kNightDnd = 'nightDnd';
@@ -25,7 +28,9 @@ class NotificationService {
   static const _kRangeEnd = 'rangeEnd';
   static const _kRepeat = 'repeat';
   static const _kSound = 'sound';
-  static const _kEarphoneEnabled = 'earphoneEnabled';
+  // 扬声器提醒开关(新增,兼容旧 earphoneEnabled)
+  static const _kSpeakerEnabled = 'speakerEnabled';
+  static const _kLegacyEarphoneEnabled = 'earphoneEnabled';
   static const _kEarphoneVolume = 'earphoneVolume';
 
   // 今日提醒次数持久化 key
@@ -44,12 +49,21 @@ class NotificationService {
       channelId,
       channelName,
       description: channelDesc,
-      importance: Importance.high,
+      importance: Importance.max,
+      showBadge: true,
+      enableVibration: true,
+      playSound: true,
     );
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
+
+    // 删除旧版渠道 v2(若存在),避免遗留配置干扰新渠道
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.deleteNotificationChannel('drinking_reminder_v2');
 
     _initialized = true;
   }
@@ -62,6 +76,7 @@ class NotificationService {
   }
 
   /// 立即弹出一条喝水提醒通知
+  /// 启用 fullScreenIntent + reminder category + ticker,让系统默认显示横幅
   static Future<void> showReminder({
     String title = '该喝水啦~',
     String body = '记得补充水分,保持身体水润',
@@ -72,9 +87,14 @@ class NotificationService {
       channelId,
       channelName,
       channelDescription: channelDesc,
-      importance: Importance.high,
-      priority: Priority.high,
+      importance: Importance.max,
+      priority: Priority.max,
+      visibility: NotificationVisibility.public,
       icon: '@mipmap/ic_launcher',
+      category: AndroidNotificationCategory.reminder,
+      fullScreenIntent: true,
+      ticker: '喝水小精灵提醒',
+      enableLights: true,
     );
     const details = NotificationDetails(android: androidDetails);
     await _plugin.show(
@@ -92,7 +112,16 @@ class NotificationService {
 
   /// 闹钟触发时的回调入口(后台 isolate 也能调用)
   /// 由 AlarmService 的顶层 callback 调用
-  /// 检查免打扰/提醒时段/重复周期,不满足条件时静默跳过
+  /// 检查免打扰/提醒时段/重复周期,不满足条件时弹静默提示通知(让用户感知闹钟已触发)
+  ///
+  /// 执行顺序优化(解决「循环闹钟通知成功但飞书推送失败」问题):
+  /// 1. 弹出通知(最快,优先级最高)
+  /// 2. 并行启动飞书推送 + 音效播放
+  /// 3. 只 await 飞书推送(关键任务),音效播放 fire-and-forget
+  ///
+  /// 原因:音效播放内部有 8 秒强制等待,串行会导致飞书推送延迟 8 秒才开始
+  /// 后台 isolate 在等待期间可能被系统杀死,导致飞书推送代码无法执行
+  /// 并行执行可确保飞书推送立即开始,不被音效阻塞
   @pragma('vm:entry-point')
   static Future<void> onAlarmFired(int id) async {
     debugPrint('[AlarmFired] 闹钟触发, id=$id, time=${DateTime.now()}');
@@ -104,17 +133,21 @@ class NotificationService {
     await init();
 
     // 读取 SharedPreferences 检查是否应该提醒
+    // reload() 确保后台 isolate 读到主 isolate 最新写入的配置(音效/音量等)
     final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
 
     // 免打扰检查
     if (_isInDndPeriod(prefs)) {
-      debugPrint('[AlarmFired] 处于免打扰时段,跳过提醒');
+      debugPrint('[AlarmFired] 处于免打扰时段,跳过提醒(弹静默提示)');
+      await _showSkippedNotification('当前处于免打扰时段,已静音提醒');
       return;
     }
 
     // 提醒时段检查
     if (!_isInRangeTime(prefs)) {
-      debugPrint('[AlarmFired] 不在提醒时段内,跳过提醒');
+      debugPrint('[AlarmFired] 不在提醒时段内,跳过提醒(弹静默提示)');
+      await _showSkippedNotification('当前不在提醒时段内,已静音提醒');
       return;
     }
 
@@ -125,25 +158,79 @@ class NotificationService {
     }
 
     debugPrint('[AlarmFired] 通过所有检查,执行提醒');
-    await showReminder(id: id);
 
-    // 播放治愈音效(从 SharedPreferences 读取用户配置的音效类型与音量)
-    // 使用 playFromBackground 在后台 isolate 中独立播放,配置了混合模式
-    if (prefs.getBool(_kEarphoneEnabled) ?? true) {
+    // 1. 立即弹出通知(最优先,确保用户能感知到提醒)
+    try {
+      await showReminder(id: id);
+    } catch (e) {
+      debugPrint('[AlarmFired] showReminder 异常: $e');
+    }
+
+    // 2. 并行启动飞书推送(关键任务)和音效播放(非关键)
+    // 只 await 飞书推送,音效播放 fire-and-forget
+    // 避免音效的 8 秒等待阻塞飞书推送,导致 isolate 被杀推送失败
+    debugPrint('[AlarmFired] 启动飞书推送(并行)');
+    final pushFuture = FeishuService.pushReminderFromBackground();
+
+    // 音效播放(fire-and-forget,不 await,让它在后台继续播放)
+    final speakerOn = prefs.getBool(_kSpeakerEnabled) ??
+        prefs.getBool(_kLegacyEarphoneEnabled) ??
+        true;
+    if (speakerOn) {
       final soundName = prefs.getString(_kSound);
       final sound = SoundType.fromName(soundName);
       final volume = prefs.getDouble(_kEarphoneVolume) ?? 0.6;
-      debugPrint('[AlarmFired] 播放音效: ${sound.file}, 音量: $volume');
-      await AudioService.playFromBackground(sound, volume: volume);
+      debugPrint('[AlarmFired] 启动音效播放(并行): ${sound.file}, 音量: $volume');
+      // 故意不 await:音效播放不阻塞 onAlarmFired 退出
+      // 即使 isolate 在音效播放期间被杀,飞书推送也已并行完成
+      AudioService.playFromBackground(sound, volume: volume);
+    } else {
+      debugPrint('[AlarmFired] 扬声器提醒已关闭,仅显示通知');
     }
 
-    // 同时发送飞书推送(后台 isolate 中直接读 SharedPreferences)
-    debugPrint('[AlarmFired] 发送飞书推送');
-    await FeishuService.pushReminderFromBackground();
-    debugPrint('[AlarmFired] 提醒流程完成');
+    // 3. 等待飞书推送完成(关键任务,必须等待)
+    try {
+      await pushFuture;
+      debugPrint('[AlarmFired] 飞书推送流程完成');
+    } catch (e) {
+      debugPrint('[AlarmFired] 飞书推送异常: $e');
+    }
 
-    // 记录今日提醒次数(持久化,App 回前台时读取)
-    await _recordReminderFired(prefs);
+    // 4. 记录今日提醒次数(持久化,App 回前台时读取)
+    try {
+      await _recordReminderFired(prefs);
+    } catch (e) {
+      debugPrint('[AlarmFired] 记录提醒次数异常: $e');
+    }
+
+    debugPrint('[AlarmFired] 提醒流程全部完成');
+  }
+
+  /// 静默提示通知 - 闹钟已触发但被免打扰/时段拦截时使用
+  /// 不带声音/振动,仅通知栏可见,让用户感知闹钟机制正常工作
+  static Future<void> _showSkippedNotification(String reason) async {
+    try {
+      const androidDetails = AndroidNotificationDetails(
+        channelId,
+        channelName,
+        channelDescription: channelDesc,
+        importance: Importance.low,
+        priority: Priority.low,
+        playSound: false,
+        enableVibration: false,
+        visibility: NotificationVisibility.public,
+        icon: '@mipmap/ic_launcher',
+      );
+      const details = NotificationDetails(android: androidDetails);
+      await _plugin.show(
+        DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        '提醒已静音',
+        '$reason(闹钟已正常触发)',
+        details,
+      );
+    } catch (e) {
+      debugPrint('[AlarmFired] 静默提示通知失败: $e');
+    }
   }
 
   /// 测试提醒:跳过所有条件检查,直接执行通知+音效+飞书推送
@@ -160,7 +247,11 @@ class NotificationService {
       body: '闹钟机制正常工作! ${DateTime.now().toString().substring(11, 19)}',
     );
     final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(_kEarphoneEnabled) ?? true) {
+    await prefs.reload();
+    final speakerOn = prefs.getBool(_kSpeakerEnabled) ??
+        prefs.getBool(_kLegacyEarphoneEnabled) ??
+        true;
+    if (speakerOn) {
       final soundName = prefs.getString(_kSound);
       final sound = SoundType.fromName(soundName);
       final volume = prefs.getDouble(_kEarphoneVolume) ?? 0.6;
@@ -191,13 +282,14 @@ class NotificationService {
   /// 检查当前是否处于免打扰时段
   static bool _isInDndPeriod(SharedPreferences prefs) {
     final nightDnd = prefs.getBool(_kNightDnd) ?? true;
-    final noonDnd = prefs.getBool(_kNoonDnd) ?? true;
+    final noonDnd = prefs.getBool(_kNoonDnd) ?? false;
 
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
 
     if (nightDnd && (hm >= 22 * 60 || hm < 7 * 60)) return true;
-    if (noonDnd && hm >= 12 * 60 + 30 && hm < 13 * 60 + 30) return true;
+    // 午休免打扰:12:30 ~ 14:30
+    if (noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return true;
 
     return false;
   }

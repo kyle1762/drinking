@@ -1,7 +1,7 @@
 name: drinking
-description: 治愈奶油风喝水提醒 - 安卓原生交互
+description: 喝水小精灵 - 治愈奶油风喝水提醒
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.6+7
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

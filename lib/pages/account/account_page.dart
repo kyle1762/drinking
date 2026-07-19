@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
@@ -157,9 +158,7 @@ class _WelcomeCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                      s.profile.nickname.isEmpty
-                          ? '喝水小达人'
-                          : s.profile.nickname,
+                      s.profile.nickname.isEmpty ? '喝水小达人' : s.profile.nickname,
                       style: const TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 16,
@@ -170,8 +169,7 @@ class _WelcomeCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.favorite_outline,
-                  color: AppColors.softBlueDeep),
+            const Icon(Icons.favorite_outline, color: AppColors.softBlueDeep),
           ],
         ),
       ),
@@ -316,30 +314,108 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  // 机器人创建教程链接(替代原多行文字说明)
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: AppColors.paused,
                       borderRadius: BorderRadius.circular(AppThemeRadius.s),
                     ),
-                    child: const Row(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.info_outline,
-                            size: 16, color: AppColors.textSecondary),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '1. 访问 open.feishu.cn 创建自建应用\n'
-                            '2. 开启「机器人」能力\n'
-                            '3. 权限:im:message、contact:user.base:readonly\n'
-                            '4. 安全设置添加重定向 URL:\n'
-                            '   https://drinking.example.com/oauth/callback',
-                            style: TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 11,
-                                height: 1.5),
-                          ),
+                        const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.menu_book_outlined,
+                                size: 16, color: AppColors.textSecondary),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '不知道如何创建飞书机器人?点击查看图文教程:',
+                                style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                    height: 1.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: RippleButton(
+                                onTap: () => _launchUrl(
+                                    'http://xhslink.com/o/7WXxORSC6UN'),
+                                borderRadius: AppThemeRadius.s,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 10, horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.feishu,
+                                    borderRadius:
+                                        BorderRadius.circular(AppThemeRadius.s),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.open_in_new,
+                                          size: 14,
+                                          color: AppColors.softBlueDeep),
+                                      SizedBox(width: 4),
+                                      Text('小红书教程',
+                                          style: TextStyle(
+                                              color: AppColors.softBlueDeep,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: RippleButton(
+                                onTap: () => _launchUrl(
+                                    'https://www.zhihu.com/pin/2062320602816549984'),
+                                borderRadius: AppThemeRadius.s,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 10, horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.softBlue,
+                                    borderRadius:
+                                        BorderRadius.circular(AppThemeRadius.s),
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.open_in_new,
+                                          size: 14,
+                                          color: AppColors.softBlueDeep),
+                                      SizedBox(width: 4),
+                                      Text('知乎教程',
+                                          style: TextStyle(
+                                              color: AppColors.softBlueDeep,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          '提示:保存凭证后点击「手机号登录」即可,无需配置重定向 URL',
+                          style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 11,
+                              height: 1.5),
                         ),
                       ],
                     ),
@@ -432,34 +508,75 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
                   ),
                   const SizedBox(height: 14),
                   if (_loading)
-                    const Center(child: Padding(
+                    const Center(
+                        child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
-                      child: CircularProgressIndicator(color: AppColors.softBlueDeep),
+                      child: CircularProgressIndicator(
+                          color: AppColors.softBlueDeep),
                     ))
                   else
-                    RippleButton(
-                      onTap: () => _startOAuth(context),
-                      borderRadius: AppThemeRadius.s,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        decoration: BoxDecoration(
-                          color: AppColors.feishu,
-                          borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                    Row(
+                      children: [
+                        // OAuth 登录(需配置重定向 URL)
+                        Expanded(
+                          child: RippleButton(
+                            onTap: () => _startOAuth(context),
+                            borderRadius: AppThemeRadius.s,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                color: AppColors.feishu,
+                                borderRadius:
+                                    BorderRadius.circular(AppThemeRadius.s),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.login,
+                                      size: 18, color: AppColors.softBlueDeep),
+                                  SizedBox(width: 6),
+                                  Text('飞书登录',
+                                      style: TextStyle(
+                                          color: AppColors.softBlueDeep,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
-                        alignment: Alignment.center,
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.login, size: 18, color: AppColors.softBlueDeep),
-                            SizedBox(width: 8),
-                            Text('飞书登录',
-                                style: TextStyle(
-                                    color: AppColors.softBlueDeep,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600)),
-                          ],
+                        const SizedBox(width: 12),
+                        // 手机号登录(无需配置重定向 URL,更可靠)
+                        Expanded(
+                          child: RippleButton(
+                            onTap: () => _startPhoneLogin(context),
+                            borderRadius: AppThemeRadius.s,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              decoration: BoxDecoration(
+                                color: AppColors.softBlue,
+                                borderRadius:
+                                    BorderRadius.circular(AppThemeRadius.s),
+                              ),
+                              alignment: Alignment.center,
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.phone_android,
+                                      size: 18, color: AppColors.softBlueDeep),
+                                  SizedBox(width: 6),
+                                  Text('手机号登录',
+                                      style: TextStyle(
+                                          color: AppColors.softBlueDeep,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600)),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   const SizedBox(height: 10),
                   // 允许重新编辑凭证
@@ -505,7 +622,8 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
                           ],
                         ),
                       ),
-                      const Icon(Icons.link, color: AppColors.mintDeep, size: 18),
+                      const Icon(Icons.link,
+                          color: AppColors.mintDeep, size: 18),
                     ],
                   ),
                 ],
@@ -531,6 +649,24 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('配置已保存,可点击下方「飞书登录」')),
     );
+  }
+
+  /// 打开外部链接(机器人创建教程)
+  Future<void> _launchUrl(String url) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final uri = Uri.parse(url);
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('无法打开链接:$url')),
+        );
+      }
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('打开链接失败:$e')),
+      );
+    }
   }
 
   /// 清除已保存的凭证,让用户重新填写
@@ -604,6 +740,44 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
 
     messenger.showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+    );
+  }
+
+  /// 通过手机号登录飞书(无需配置 OAuth 重定向 URL)
+  Future<void> _startPhoneLogin(BuildContext context) async {
+    final phone = await AppDialogs.inputDialog(
+      context,
+      title: '手机号登录',
+      hint: '请输入飞书绑定的手机号(如 13800138000)',
+      keyboardType: TextInputType.phone,
+    );
+    if (phone == null || phone.trim().isEmpty) return;
+    if (!context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final s = context.read<AppState>();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 20),
+            Text('正在查询飞书用户...'),
+          ],
+        ),
+      ),
+    );
+
+    final (success, message) = await s.loginWithPhone(phone.trim());
+
+    if (!context.mounted) return;
+    Navigator.of(context).pop();
+
+    messenger.showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
     );
   }
 }
