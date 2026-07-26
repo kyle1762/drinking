@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
 import 'theme/app_theme.dart';
 import 'state/app_state.dart';
 import 'pages/home_page.dart';
@@ -12,6 +13,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 初始化持久化存储(必须在 AppState 创建前完成)
   await StorageService.init();
+  // 加载用户自定义食物营养表(食材未匹配时由 AI 补全并持久化的数据)
+  StorageService.loadCustomFoodNutrition();
+  // 初始化时区数据(device_calendar v4 需要 TZDateTime)
+  tz_data.initializeTimeZones();
   // 初始化通知渠道
   await NotificationService.init();
   // 初始化闹钟服务

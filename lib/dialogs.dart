@@ -90,6 +90,7 @@ class AppDialogs {
   }
 
   /// 底部输入弹窗(手机号/验证码/昵称等)
+  /// 使用 AnimatedPadding 适配键盘,避免遮挡文本框
   static Future<String?> inputDialog(
     BuildContext context, {
     required String title,
@@ -101,32 +102,38 @@ class AppDialogs {
     final controller = TextEditingController(text: initial);
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppThemeRadius.m)),
-        title: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
-        content: TextField(
-          controller: controller,
-          maxLines: maxLines,
-          keyboardType: keyboardType,
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: hint,
-            isDense: true,
-            filled: true,
-            fillColor: AppColors.cream,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(AppThemeRadius.s),
-              borderSide: BorderSide.none,
+      builder: (ctx) => AnimatedPadding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
+        ),
+        duration: const Duration(milliseconds: 200),
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppThemeRadius.m)),
+          title: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          content: TextField(
+            controller: controller,
+            maxLines: maxLines,
+            keyboardType: keyboardType,
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: hint,
+              isDense: true,
+              filled: true,
+              fillColor: AppColors.cream,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                borderSide: BorderSide.none,
+              ),
             ),
           ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('确定', style: TextStyle(color: AppColors.softBlueDeep, fontWeight: FontWeight.w600)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('确定', style: TextStyle(color: AppColors.softBlueDeep, fontWeight: FontWeight.w600)),
-          ),
-        ],
       ),
     );
     return result;

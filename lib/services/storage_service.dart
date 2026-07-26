@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
+import '../data/food_nutrition.dart';
 
 /// 本地持久化服务 - 基于 SharedPreferences
 /// 保存账号状态、用户配置、喝水记录、提醒任务等,App 重启不丢失
@@ -49,11 +50,24 @@ class StorageService {
   static const _kAiApiKey = 'aiApiKey';
   static const _kFoodRecords = 'foodRecords';
   static const _kExerciseRecords = 'exerciseRecords';
+  static const _kWeeklyRecords = 'weeklyRecords';
+  static const _kLastFoodClearDate = 'lastFoodClearDate';
+  static const _kCustomFoodNutrition = 'customFoodNutrition';
   // 扬声器提醒开关(新增,默认 true;兼容旧版 earphoneEnabled)
   static const _kSpeakerEnabled = 'speakerEnabled';
   static const _kLegacyEarphoneEnabled = 'earphoneEnabled';
   // 午休免打扰首启询问标记
   static const _kHasPromptedNoonDnd = 'hasPromptedNoonDnd';
+  // 上次提醒更新个人信息的日期(每日首次进入热量追踪页提醒)
+  static const _kLastProfileRemindDate = 'lastProfileRemindDate';
+  // 日历事件追踪(批量添加后记录 eventId,供一键清除使用)
+  static const _kCalendarEventIds = 'calendarEventIds';
+  // 闹钟时间追踪(批量添加后记录时间,供一键清除提示)
+  static const _kAlarmTimes = 'alarmTimes';
+  // 每日饮食摘要历史(每日清空食物记录前保存,供 AI 分析近期饮食)
+  static const _kDailyDietSummaries = 'dailyDietSummaries';
+  // 当前 AI 饮食建议(含建议摄入量,可被动态调整)
+  static const _kDietAdvice = 'dietAdvice';
 
   // ============ 加载全部 ============
   /// 从磁盘读取全部状态,返回一个 Map,供 AppState.bootstrap 使用
@@ -95,7 +109,11 @@ class StorageService {
       aiApiKey: p.getString(_kAiApiKey) ?? '',
       foodRecords: _loadFoodRecords(),
       exerciseRecords: _loadExerciseRecords(),
+      weeklyRecords: _loadWeeklyRecords(),
+      lastFoodClearDate: p.getString(_kLastFoodClearDate) ?? '',
       speakerEnabled: speaker,
+      dailyDietSummaries: loadDailyDietSummaries(),
+      dietAdvice: loadDietAdvice(),
     );
   }
 
@@ -161,6 +179,19 @@ class StorageService {
     }
   }
 
+  static List<WeeklyRecord> _loadWeeklyRecords() {
+    final s = _p.getString(_kWeeklyRecords);
+    if (s == null) return [];
+    try {
+      final list = jsonDecode(s) as List;
+      return list
+          .map((e) => WeeklyRecord.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   // ============ 保存单项 ============
   static Future<void> saveAccountState(int index) =>
       _p.setInt(_kAccountState, index);
@@ -208,6 +239,84 @@ class StorageService {
   static Future<void> saveNoonDnd(bool v) => _p.setBool(_kNoonDnd, v);
   static Future<void> saveHasPromptedNoonDnd(bool v) =>
       _p.setBool(_kHasPromptedNoonDnd, v);
+
+  /// 读取上次提醒更新个人信息的日期(yyyy-MM-dd)
+  static String getLastProfileRemindDate() =>
+      _p.getString(_kLastProfileRemindDate) ?? '';
+  static Future<void> saveLastProfileRemindDate(String date) =>
+      _p.setString(_kLastProfileRemindDate, date);
+
+  /// 日历事件追踪记录读写(批量添加日历事件后,记录 eventId 供一键清除)
+  static List<CalendarEventRef> loadCalendarEventIds() {
+    final s = _p.getString(_kCalendarEventIds);
+    if (s == null) return [];
+    try {
+      final list = jsonDecode(s) as List;
+      return list
+          .map((e) => CalendarEventRef.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> saveCalendarEventIds(List<CalendarEventRef> list) =>
+      _p.setString(_kCalendarEventIds,
+          jsonEncode(list.map((e) => e.toJson()).toList()));
+
+  /// 闹钟时间追踪记录读写(批量添加闹钟后,记录时间供一键清除提示)
+  static List<AlarmTimeRecord> loadAlarmTimes() {
+    final s = _p.getString(_kAlarmTimes);
+    if (s == null) return [];
+    try {
+      final list = jsonDecode(s) as List;
+      return list
+          .map((e) => AlarmTimeRecord.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> saveAlarmTimes(List<AlarmTimeRecord> list) =>
+      _p.setString(
+          _kAlarmTimes, jsonEncode(list.map((e) => e.toJson()).toList()));
+
+  /// 每日饮食摘要历史读写
+  static List<DailyDietSummary> loadDailyDietSummaries() {
+    final s = _p.getString(_kDailyDietSummaries);
+    if (s == null) return [];
+    try {
+      final list = jsonDecode(s) as List;
+      return list
+          .map((e) => DailyDietSummary.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> saveDailyDietSummaries(List<DailyDietSummary> list) =>
+      _p.setString(_kDailyDietSummaries,
+          jsonEncode(list.map((e) => e.toJson()).toList()));
+
+  /// 当前 AI 饮食建议读写
+  static DietAdvice? loadDietAdvice() {
+    final s = _p.getString(_kDietAdvice);
+    if (s == null) return null;
+    try {
+      return DietAdvice.fromJson(jsonDecode(s) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> saveDietAdvice(DietAdvice? advice) {
+    if (advice == null) {
+      return _p.remove(_kDietAdvice);
+    }
+    return _p.setString(_kDietAdvice, jsonEncode(advice.toJson()));
+  }
   static Future<void> saveSpeakerEnabled(bool v) =>
       _p.setBool(_kSpeakerEnabled, v);
   static Future<void> saveRememberSyncFeishu(bool v) =>
@@ -221,6 +330,26 @@ class StorageService {
   static Future<void> saveExerciseRecords(List<ExerciseRecord> list) =>
       _p.setString(
           _kExerciseRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
+  static Future<void> saveWeeklyRecords(List<WeeklyRecord> list) =>
+      _p.setString(
+          _kWeeklyRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
+  static Future<void> saveLastFoodClearDate(String date) =>
+      _p.setString(_kLastFoodClearDate, date);
+
+  /// 保存用户自定义食物营养表到本地
+  static Future<void> saveCustomFoodNutrition() =>
+      _p.setString(_kCustomFoodNutrition,
+          jsonEncode(FoodNutritionDB.customToJsonList()));
+
+  /// 加载用户自定义食物营养表(启动时调用)
+  static void loadCustomFoodNutrition() {
+    final s = _p.getString(_kCustomFoodNutrition);
+    if (s == null) return;
+    try {
+      final list = jsonDecode(s) as List;
+      FoodNutritionDB.loadCustomFromJson(list);
+    } catch (_) {}
+  }
 
   /// 清空所有持久化数据(退出登录且不保留本地数据时调用)
   static Future<void> clearAll() async {
@@ -255,8 +384,16 @@ class StorageService {
       _kAiApiKey,
       _kFoodRecords,
       _kExerciseRecords,
+      _kWeeklyRecords,
+      _kLastFoodClearDate,
+      _kCustomFoodNutrition,
       _kSpeakerEnabled,
       _kLegacyEarphoneEnabled,
+      _kLastProfileRemindDate,
+      _kCalendarEventIds,
+      _kAlarmTimes,
+      _kDailyDietSummaries,
+      _kDietAdvice,
     ];
     for (final k in keys) {
       await _p.remove(k);
@@ -296,7 +433,11 @@ class StoredData {
   final String aiApiKey;
   final List<FoodRecord> foodRecords;
   final List<ExerciseRecord> exerciseRecords;
+  final List<WeeklyRecord> weeklyRecords;
+  final String lastFoodClearDate;
   final bool speakerEnabled;
+  final List<DailyDietSummary> dailyDietSummaries;
+  final DietAdvice? dietAdvice;
 
   const StoredData({
     required this.accountStateIndex,
@@ -329,6 +470,10 @@ class StoredData {
     required this.aiApiKey,
     required this.foodRecords,
     required this.exerciseRecords,
+    required this.weeklyRecords,
+    required this.lastFoodClearDate,
     required this.speakerEnabled,
+    required this.dailyDietSummaries,
+    required this.dietAdvice,
   });
 }

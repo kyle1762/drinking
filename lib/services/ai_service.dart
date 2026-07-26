@@ -4,11 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../models/models.dart';
+import '../data/food_nutrition.dart';
 import 'storage_service.dart';
 
 /// AI 识别服务
 /// - 对接智谱 GLM-4V-Flash(免费图片理解模型)
-/// - 负责调用 AI 接口识别食物/运动图片
+/// - 食物识别:AI 识别菜品名+食材列表+比例,营养数据从本地营养表查询
+/// - 运动识别:AI 识别运动类型和单次消耗
 /// - 管理 API Key 的读写
 class AiService {
   AiService._();
@@ -21,6 +23,9 @@ class AiService {
 
   /// 图片理解模型(免费)
   static const _model = 'glm-4v-flash';
+
+  /// 文本模型(免费,用于食材营养查询和运动卡路里估算)
+  static const _textModel = 'glm-4-flash';
 
   // ========== API Key 管理 ==========
 
@@ -91,6 +96,8 @@ class AiService {
   }
 
   /// 调用智谱 GLM-4V-Flash API 进行图片识别
+  /// 食物:要求 AI 识别菜品中的食材及占比,营养数据从本地营养表查询
+  /// 运动:要求 AI 识别运动类型和单次消耗
   static Future<AiRecognitionResult> _callAiApi({
     required AiRecognitionType type,
     required String imagePath,
@@ -102,11 +109,9 @@ class AiService {
     final base64Image = base64Encode(bytes);
     final imageUrl = 'data:image/jpeg;base64,$base64Image';
 
-    // 构造提示词:要求 AI 返回 JSON 格式的识别结果
+    // 构造提示词
     final prompt = type == AiRecognitionType.food
-        ? '请识别这张图片中的食物。返回纯JSON格式(不要markdown标记),包含以下字段:\n'
-            '{"name":"食物名称","calories_per_100g":每100克热量(kcal整数),"confidence":0到1之间的信心度}\n'
-            '例如: {"name":"苹果","calories_per_100g":52,"confidence":0.9}'
+        ? _buildFoodPrompt()
         : '请识别这张图片中的运动类型。返回纯JSON格式(不要markdown标记),包含以下字段:\n'
             '{"name":"运动名称","calories_per_rep":每次动作消耗热量(kcal,可为小数),"confidence":0到1之间的信心度}\n'
             '例如: {"name":"俯卧撑","calories_per_rep":0.5,"confidence":0.85}';
@@ -133,7 +138,7 @@ class AiService {
           },
         ],
         'temperature': 0.1,
-        'max_tokens': 200,
+        'max_tokens': 400,
       }),
     );
 
@@ -154,20 +159,254 @@ class AiService {
 
     // 从 AI 回复中提取 JSON
     final json = _extractJson(content);
-
-    final name = json['name'] as String? ?? '未知';
     final confidence = (json['confidence'] as num?)?.toDouble() ?? 0.5;
-    final value = type == AiRecognitionType.food
-        ? (json['calories_per_100g'] as num?)?.toDouble() ?? 100
-        : (json['calories_per_rep'] as num?)?.toDouble() ?? 0.5;
 
-    return AiRecognitionResult(
-      type: type,
-      name: name,
-      value: value,
-      confidence: confidence,
-      imagePath: imagePath,
-    );
+    if (type == AiRecognitionType.food) {
+      final jsonType = json['type'] as String? ?? 'dish';
+      // 情况A:营养成分表
+      if (jsonType == 'label') {
+        final name = json['name'] as String? ?? '未知食品';
+        final energy = (json['energy'] as num?)?.toDouble() ?? 0;
+        final protein = (json['protein'] as num?)?.toDouble() ?? 0;
+        final fat = (json['fat'] as num?)?.toDouble() ?? 0;
+        final carbs = (json['carbs'] as num?)?.toDouble() ?? 0;
+        final fiber = (json['fiber'] as num?)?.toDouble() ?? 0;
+        final nut = FoodNutrition(
+          name: name,
+          energy: energy,
+          protein: protein,
+          fat: fat,
+          carbs: carbs,
+          fiber: fiber,
+        );
+        return AiRecognitionResult(
+          type: type,
+          name: name,
+          value: energy, // kcal/100g
+          confidence: confidence,
+          imagePath: imagePath,
+          fromLabel: true,
+          labelNutrition: nut,
+        );
+      }
+
+      // 情况B:菜品/普通食物
+      final dishName = json['dish'] as String? ?? json['name'] as String? ?? '未知菜品';
+      final ingredientsList = json['ingredients'] as List? ?? [];
+      final ingredients = <FoodIngredient>[];
+      double totalEnergy = 0;
+      double matchedRatio = 0;
+
+      for (final e in ingredientsList) {
+        final ingName = e['name'] as String? ?? '';
+        final ratio = (e['ratio'] as num?)?.toDouble() ?? 0;
+        if (ingName.isEmpty || ratio <= 0) continue;
+        ingredients.add(FoodIngredient(name: ingName, ratio: ratio));
+
+        // 查询本地营养表(内置+自定义)
+        var nut = FoodNutritionDB.lookup(ingName);
+        if (nut == null) {
+          // 本地未匹配,调用 AI 评判该食材每100g营养(仅用于本次计算,不持久化)
+          debugPrint('[AiService] 食材未匹配,调用 AI 评判: $ingName');
+          nut = await lookupIngredientNutrition(ingName);
+          if (nut != null) {
+            debugPrint('[AiService] AI 评判食材: $ingName -> ${nut.energy}kcal/100g (不记录)');
+          }
+        }
+        if (nut != null) {
+          totalEnergy += nut.energy * ratio;
+          matchedRatio += ratio;
+        }
+      }
+
+      // 如果没匹配到任何食材,用一个合理默认值
+      double kcalPer100g;
+      if (ingredients.isEmpty || matchedRatio < 0.1) {
+        kcalPer100g = 150; // 默认混合菜品
+        if (ingredients.isEmpty) {
+          ingredients.add(FoodIngredient(name: dishName, ratio: 1));
+        }
+      } else {
+        // 按匹配到的比例归一化(未匹配的食材按平均 150 kcal/100g 补)
+        final unmatchedRatio = (1 - matchedRatio).clamp(0, 1);
+        totalEnergy += 150 * unmatchedRatio;
+        kcalPer100g = totalEnergy;
+      }
+
+      // AI 结合餐具估算的食物重量(g),0 表示未估算
+      final estimatedWeight =
+          (json['estimated_weight'] as num?)?.toDouble() ?? 0;
+
+      return AiRecognitionResult(
+        type: type,
+        name: dishName,
+        value: kcalPer100g,
+        confidence: confidence,
+        imagePath: imagePath,
+        ingredients: ingredients,
+        estimatedWeight: estimatedWeight,
+      );
+    } else {
+      // 运动
+      final name = json['name'] as String? ?? '未知运动';
+      final value = (json['calories_per_rep'] as num?)?.toDouble() ?? 0.5;
+      return AiRecognitionResult(
+        type: type,
+        name: name,
+        value: value,
+        confidence: confidence,
+        imagePath: imagePath,
+      );
+    }
+  }
+
+  /// 构造食物识别提示词
+  static String _buildFoodPrompt() {
+    return '请识别这张食物图片。首先判断图片是否为预包装食品的"营养成分表"(通常含表格,列出每100g或每份的能量/蛋白质/脂肪/碳水化合物/钠等)。\n'
+        '情况A:若图片是营养成分表,返回纯JSON(不要markdown标记):\n'
+        '{"type":"label","name":"食品名称(从表上或包装上识别)","energy":每100g能量kcal数值,"protein":每100g蛋白质g数值,"fat":每100g脂肪g数值,"carbs":每100g碳水化合物g数值,"fiber":每100g膳食纤维g数值(若表上无则填0),"confidence":0到1}\n'
+        '注意:若表上单位是每100ml或每份,请换算为每100g后填写;能量若单位是kJ,请除以4.184转换为kcal。\n'
+        '情况B:若图片是菜品或普通食物(非营养成分表),返回纯JSON(不要markdown标记):\n'
+        '{"type":"dish","dish":"菜品名称","ingredients":[{"name":"食材名","ratio":0到1之间占比}],"estimated_weight":估算的本次食物总重量克数整数(视觉估算,若无把握填0),"confidence":0到1之间信心度}\n'
+        '注意:1)食材名必须使用中文常见名(如:番茄、土豆、猪肉、牛肉、鸡肉、白菜、胡萝卜、鸡蛋、米饭) 2)所有食材占比之和应接近1 3)最多5个主要食材 4)estimated_weight 为本次图片中食物的总重量(g),视觉估算(食物密度约1g/ml,汤汁较多可略高)\n'
+        '菜品示例: {"type":"dish","dish":"番茄炒蛋","ingredients":[{"name":"番茄","ratio":0.4},{"name":"鸡蛋","ratio":0.6}],"estimated_weight":200,"confidence":0.9}\n'
+        '标签示例: {"type":"label","name":"某饼干","energy":480,"protein":7,"fat":20,"carbs":65,"fiber":2.5,"confidence":0.95}';
+  }
+
+  /// 调用纯文本 AI 接口,查询某个食材每100g的营养成分
+  /// 用于食材未匹配时补全自定义营养表(公开方法,页面也可调用)
+  /// 无 API Key 或失败时返回 null
+  static Future<FoodNutrition?> lookupIngredientNutrition(String name) async {
+    if (!hasApiKey) return null;
+    try {
+      final prompt = '请返回食材"$name"每100克的营养成分。只需返回纯JSON(不要markdown标记):\n'
+          '{"name":"$name","energy":每100g能量kcal数值,"protein":蛋白质g数值,"fat":脂肪g数值,"carbs":碳水g数值,"fiber":膳食纤维g数值}\n'
+          '注意:所有数值为合理平均值,保留1位小数;若该食材无法明确营养,energy 填 100。';
+
+      final response = await http.post(
+        Uri.parse(_endpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': _textModel,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.1,
+          'max_tokens': 200,
+        }),
+      );
+      if (response.statusCode != 200) {
+        debugPrint('[AiService] 食材查询 API 返回 ${response.statusCode}');
+        return null;
+      }
+      final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      final choices = respData['choices'] as List;
+      if (choices.isEmpty) return null;
+      final content = choices[0]['message']['content'] as String;
+      final json = _extractJson(content);
+      return FoodNutrition(
+        name: name,
+        energy: (json['energy'] as num?)?.toDouble() ?? 100,
+        protein: (json['protein'] as num?)?.toDouble() ?? 0,
+        fat: (json['fat'] as num?)?.toDouble() ?? 0,
+        carbs: (json['carbs'] as num?)?.toDouble() ?? 0,
+        fiber: (json['fiber'] as num?)?.toDouble() ?? 0,
+      );
+    } catch (e) {
+      debugPrint('[AiService] 食材营养查询失败: $e');
+      return null;
+    }
+  }
+
+  /// AI 运动卡路里估算结果
+  /// name: 解析出的运动名称
+  /// count: 解析出的数量
+  /// unit: 单位(步/层/次/分钟/公里等)
+  /// kcalPerUnit: 每单位消耗 kcal
+  /// totalKcal: 总消耗 kcal
+  static Future<({String name, int count, String unit, double kcalPerUnit, double totalKcal})?>
+      estimateExerciseCalories({
+    required String exerciseName,
+    required int gender,
+    required int age,
+    required int height,
+    required int weight,
+  }) async {
+    if (!hasApiKey) return null;
+    try {
+      final genderStr = gender == 0 ? '男' : gender == 1 ? '女' : '未指定';
+      final prompt = '请估算一位用户的运动消耗。用户信息:性别=$genderStr,年龄=$age 岁,身高=$height cm,体重=$weight kg。\n'
+          '用户输入的运动内容:"$exerciseName"\n\n'
+          '请解析运动名称和数量(若输入中包含数字和单位则提取,若不包含则默认数量为1),并计算总消耗热量。\n\n'
+          '参考热量消耗(以65kg成年人为例,请根据用户实际体重按比例调整):\n'
+          '- 散步/慢走:约0.04 kcal/步,或约3-4 kcal/分钟\n'
+          '- 快走:约0.06 kcal/步,或约5-6 kcal/分钟\n'
+          '- 慢跑/跑步:约0.08 kcal/步,或约8-12 kcal/分钟\n'
+          '- 爬楼梯/爬楼:约0.3 kcal/步(一层约15-20步),或约7-10 kcal/分钟,或约4-6 kcal/层\n'
+          '- 骑自行车:约7-10 kcal/分钟\n'
+          '- 游泳:约8-12 kcal/分钟\n'
+          '- 跳绳:约10-13 kcal/分钟\n'
+          '- 瑜伽:约3-5 kcal/分钟\n'
+          '- 俯卧撑:约0.5 kcal/次\n'
+          '- 深蹲:约0.4 kcal/次\n'
+          '- 仰卧起坐:约0.3 kcal/次\n'
+          '- 引体向上:约1 kcal/次\n'
+          '- 羽毛球/乒乓球:约5-7 kcal/分钟\n'
+          '- 篮球:约8-10 kcal/分钟\n\n'
+          '返回纯JSON(不要markdown标记):\n'
+          '{"name":"解析出的运动名称","count":数量整数,"unit":"单位(步/层/次/分钟/公里等)","kcal_per_unit":每单位消耗kcal数值,"total_kcal":总消耗kcal数值}\n\n'
+          '示例:\n'
+          '输入"散步10000步" → {"name":"散步","count":10000,"unit":"步","kcal_per_unit":0.04,"total_kcal":400}\n'
+          '输入"爬楼30层" → {"name":"爬楼","count":30,"unit":"层","kcal_per_unit":5,"total_kcal":150}\n'
+          '输入"俯卧撑50个" → {"name":"俯卧撑","count":50,"unit":"次","kcal_per_unit":0.5,"total_kcal":25}\n'
+          '输入"跑步30分钟" → {"name":"跑步","count":30,"unit":"分钟","kcal_per_unit":10,"total_kcal":300}\n'
+          '输入"爬楼" → {"name":"爬楼","count":1,"unit":"层","kcal_per_unit":5,"total_kcal":5}';
+
+      final response = await http.post(
+        Uri.parse(_endpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': _textModel,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.1,
+          'max_tokens': 300,
+        }),
+      );
+      if (response.statusCode != 200) {
+        debugPrint('[AiService] 运动估算 API 返回 ${response.statusCode}');
+        return null;
+      }
+      final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      final choices = respData['choices'] as List;
+      if (choices.isEmpty) return null;
+      final content = choices[0]['message']['content'] as String;
+      debugPrint('[AiService] 运动估算 AI 返回: $content');
+      final json = _extractJson(content);
+      final name = json['name'] as String? ?? exerciseName;
+      final count = (json['count'] as num?)?.toInt() ?? 1;
+      final unit = json['unit'] as String? ?? '次';
+      final kcalPerUnit = (json['kcal_per_unit'] as num?)?.toDouble() ?? 0;
+      final totalKcal = (json['total_kcal'] as num?)?.toDouble() ??
+          (kcalPerUnit * count);
+      return (
+        name: name,
+        count: count,
+        unit: unit,
+        kcalPerUnit: kcalPerUnit,
+        totalKcal: totalKcal,
+      );
+    } catch (e) {
+      debugPrint('[AiService] 运动卡路里估算失败: $e');
+      return null;
+    }
   }
 
   /// 从 AI 回复文本中提取 JSON 对象
@@ -179,7 +418,7 @@ class AiService {
     } catch (_) {}
 
     // 尝试提取 ```json ... ``` 中的内容
-    final regex = RegExp(r'\{[^}]+\}', dotAll: true);
+    final regex = RegExp(r'\{[\s\S]*\}', dotAll: true);
     final match = regex.firstMatch(text);
     if (match != null) {
       try {
@@ -198,19 +437,258 @@ class AiService {
     if (type == AiRecognitionType.food) {
       return AiRecognitionResult(
         type: AiRecognitionType.food,
-        name: '苹果',
-        value: 52, // 52 kcal / 100g
+        name: '番茄炒蛋',
+        value: 110, // 加权平均后约 110 kcal/100g
         confidence: 0.85,
         imagePath: imagePath,
+        ingredients: [
+          const FoodIngredient(name: '番茄', ratio: 0.4),
+          const FoodIngredient(name: '鸡蛋', ratio: 0.6),
+        ],
       );
     } else {
       return AiRecognitionResult(
         type: AiRecognitionType.exercise,
         name: '俯卧撑',
-        value: 0.5, // 0.5 kcal / 次
+        value: 0.5,
         confidence: 0.78,
         imagePath: imagePath,
       );
     }
+  }
+
+  // ========== 饮食分析与建议 ==========
+
+  /// AI 饮食分析:根据用户近期饮食记录 + 目标,生成个性化建议
+  /// [recentSummaries] 最近 N 天的每日饮食摘要
+  /// [todayFoodNames] 今天已吃的食物名称列表(供 AI 参考当前饮食)
+  /// [goal] 用户目标(增肌/减脂/保持)
+  /// [profile] 用户资料(性别/年龄/身高/体重/BMR)
+  /// 返回 DietAdvice,失败返回 null
+  static Future<DietAdvice?> analyzeDietAndAdvise({
+    required List<DailyDietSummary> recentSummaries,
+    required DailyDietSummary todaySummary,
+    required UserGoal goal,
+    required UserProfile profile,
+  }) async {
+    if (!hasApiKey) {
+      return _mockDietAdvice(recentSummaries, goal, profile);
+    }
+    try {
+      final goalStr = switch (goal) {
+        UserGoal.loseFat => '减脂(降低体脂率,需热量缺口)',
+        UserGoal.gainMuscle => '增肌(增加肌肉量,需热量盈余+高蛋白)',
+        UserGoal.maintain => '保持身材(维持当前体重和体型)',
+      };
+      final genderStr = switch (profile.gender) {
+        Gender.male => '男',
+        Gender.female => '女',
+        Gender.unspecified => '未指定',
+      };
+      final bmr = profile.bmr;
+
+      // 构造近期饮食摘要描述(含运动消耗)
+      final recentDesc = recentSummaries.isEmpty
+          ? '暂无历史饮食记录(可能是首次分析)'
+          : recentSummaries.map((s) {
+              return '${s.date.month}-${s.date.day}: 摄入${s.calories}kcal, 运动${s.exerciseCalories}kcal, 蛋白${s.protein.toStringAsFixed(1)}g, 脂肪${s.fat.toStringAsFixed(1)}g, 碳水${s.carbs.toStringAsFixed(1)}g, 纤维${s.fiber.toStringAsFixed(1)}g, 食物[${s.foodNames.join('/')}]';
+            }).join('\n');
+
+      // 构造今日实时描述(含完整营养数据 + 运动消耗)
+      final todayDesc = todaySummary.calories == 0 && todaySummary.exerciseCalories == 0
+          ? '今日暂无饮食和运动记录'
+          : '今日实时: 摄入${todaySummary.calories}kcal, 运动${todaySummary.exerciseCalories}kcal, '
+              '蛋白${todaySummary.protein.toStringAsFixed(1)}g, 脂肪${todaySummary.fat.toStringAsFixed(1)}g, '
+              '碳水${todaySummary.carbs.toStringAsFixed(1)}g, 纤维${todaySummary.fiber.toStringAsFixed(1)}g, '
+              '已吃[${todaySummary.foodNames.join('/')}]';
+
+      // 构造建议摄入量参考(基于公式计算,供 AI 参考)
+      final baseCal = bmr == null
+          ? null
+          : switch (goal) {
+              UserGoal.loseFat => (bmr * 0.8).round(),
+              UserGoal.gainMuscle => (bmr * 1.1).round(),
+              UserGoal.maintain => bmr,
+            };
+      final baseProtein = profile.weight <= 0
+          ? null
+          : switch (goal) {
+              UserGoal.loseFat => profile.weight * 1.5,
+              UserGoal.gainMuscle => profile.weight * 2.0,
+              UserGoal.maintain => profile.weight * 1.2,
+            };
+      final baseFat = profile.weight <= 0
+          ? null
+          : switch (goal) {
+              UserGoal.loseFat => profile.weight * 0.6,
+              UserGoal.gainMuscle => profile.weight * 0.8,
+              UserGoal.maintain => profile.weight * 0.7,
+            };
+      final baseCarbs = profile.weight <= 0
+          ? null
+          : switch (goal) {
+              UserGoal.loseFat => profile.weight * 2.0,
+              UserGoal.gainMuscle => profile.weight * 4.0,
+              UserGoal.maintain => profile.weight * 3.0,
+            };
+
+      final prompt = '请作为专业营养师,根据用户的近期饮食记录和目标,给出个性化饮食建议。\n\n'
+          '【用户信息】\n'
+          '性别: $genderStr\n'
+          '年龄: ${profile.age} 岁\n'
+          '身高: ${profile.height} cm\n'
+          '体重: ${profile.weight} kg\n'
+          '肌肉量: ${profile.muscle} kg\n'
+          '基础代谢(BMR): ${bmr ?? "未知"} kcal\n'
+          '目标: $goalStr\n\n'
+          '【近期饮食记录】\n$recentDesc\n\n'
+          '【今日饮食】\n$todayDesc\n\n'
+          '【参考建议摄入量(基于公式)】\n'
+          '热量: ${baseCal ?? "未知"} kcal/天\n'
+          '蛋白质: ${baseProtein?.toStringAsFixed(1) ?? "未知"} g/天\n'
+          '脂肪: ${baseFat?.toStringAsFixed(1) ?? "未知"} g/天\n'
+          '碳水: ${baseCarbs?.toStringAsFixed(1) ?? "未知"} g/天\n'
+          '膳食纤维: 25 g/天\n\n'
+          '请根据以上信息分析用户当前饮食结构,给出:\n'
+          '1. 建议多吃的食物种类(2-5条,具体食物名,如"鸡胸肉""燕麦""西蓝花")\n'
+          '2. 建议少吃的食物种类(2-5条,从用户近期饮食中找出需要减少的)\n'
+          '3. 建议摄入量(根据用户目标和当前情况微调参考值)\n'
+          '4. 简短总结(50字以内)\n\n'
+          '返回纯JSON(不要markdown标记):\n'
+          '{"eat_more":["食物1","食物2"],"eat_less":["食物1","食物2"],"suggested_calories":数值,"suggested_protein":数值,"suggested_fat":数值,"suggested_carbs":数值,"suggested_fiber":数值,"summary":"总结"}\n\n'
+          '注意:\n'
+          '- 减脂目标:热量缺口约20%,高蛋白保肌肉,控碳水控脂肪\n'
+          '- 增肌目标:热量盈余约10%,高蛋白高碳水\n'
+          '- 保持目标:维持当前摄入量\n'
+          '- 所有数值为合理整数或保留1位小数\n'
+          '- 若用户饮食记录不足,基于目标和体重给出标准建议\n'
+          '- 重要:建议热量(suggested_calories)不得低于最低安全值,男性不低于1500kcal,女性不低于1200kcal';
+
+      final response = await http.post(
+        Uri.parse(_endpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': _textModel,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.3,
+          'max_tokens': 600,
+        }),
+      );
+      if (response.statusCode != 200) {
+        debugPrint('[AiService] 饮食分析 API 返回 ${response.statusCode}: ${response.body}');
+        return null;
+      }
+      final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      final choices = respData['choices'] as List;
+      if (choices.isEmpty) return null;
+      final content = choices[0]['message']['content'] as String;
+      debugPrint('[AiService] 饮食分析 AI 返回: $content');
+      final json = _extractJson(content);
+
+      final now = DateTime.now();
+      return DietAdvice(
+        createdAt: now,
+        goal: goal,
+        eatMore: (json['eat_more'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [],
+        eatLess: (json['eat_less'] as List?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            [],
+        summary: (json['summary'] as String?) ?? '已生成个性化饮食建议',
+        suggestedCalories:
+            (json['suggested_calories'] as num?)?.toInt() ?? (baseCal ?? 1800),
+        suggestedProtein:
+            (json['suggested_protein'] as num?)?.toDouble() ??
+                (baseProtein ?? 60.0),
+        suggestedFat:
+            (json['suggested_fat'] as num?)?.toDouble() ?? (baseFat ?? 50.0),
+        suggestedCarbs:
+            (json['suggested_carbs'] as num?)?.toDouble() ??
+                (baseCarbs ?? 200.0),
+        suggestedFiber:
+            (json['suggested_fiber'] as num?)?.toDouble() ?? 25.0,
+        validUntil: now.add(const Duration(days: 3)),
+      );
+    } catch (e) {
+      debugPrint('[AiService] 饮食分析失败: $e');
+      return null;
+    }
+  }
+
+  /// Mock 饮食建议 - 用于无 API Key 时的演示
+  static Future<DietAdvice> _mockDietAdvice(
+    List<DailyDietSummary> recentSummaries,
+    UserGoal goal,
+    UserProfile profile,
+  ) async {
+    await Future.delayed(const Duration(milliseconds: 800));
+    final now = DateTime.now();
+    final bmr = profile.bmr;
+    final baseCal = bmr == null
+        ? 1800
+        : switch (goal) {
+            UserGoal.loseFat => (bmr * 0.8).round(),
+            UserGoal.gainMuscle => (bmr * 1.1).round(),
+            UserGoal.maintain => bmr,
+          };
+    final baseProtein = profile.weight <= 0
+        ? 60.0
+        : switch (goal) {
+            UserGoal.loseFat => profile.weight * 1.5,
+            UserGoal.gainMuscle => profile.weight * 2.0,
+            UserGoal.maintain => profile.weight * 1.2,
+          };
+    final baseFat = profile.weight <= 0
+        ? 50.0
+        : switch (goal) {
+            UserGoal.loseFat => profile.weight * 0.6,
+            UserGoal.gainMuscle => profile.weight * 0.8,
+            UserGoal.maintain => profile.weight * 0.7,
+          };
+    final baseCarbs = profile.weight <= 0
+        ? 200.0
+        : switch (goal) {
+            UserGoal.loseFat => profile.weight * 2.0,
+            UserGoal.gainMuscle => profile.weight * 4.0,
+            UserGoal.maintain => profile.weight * 3.0,
+          };
+
+    final eatMore = switch (goal) {
+      UserGoal.loseFat => ['鸡胸肉', '西蓝花', '番茄', '鸡蛋'],
+      UserGoal.gainMuscle => ['牛肉', '鸡蛋', '牛奶', '燕麦'],
+      UserGoal.maintain => ['蔬菜', '水果', '全谷物'],
+    };
+    final eatLess = switch (goal) {
+      UserGoal.loseFat => ['油炸食品', '甜饮料', '白米饭'],
+      UserGoal.gainMuscle => ['含糖零食', '油炸食品'],
+      UserGoal.maintain => ['油炸食品', '高糖饮料'],
+    };
+    final summary = switch (goal) {
+      UserGoal.loseFat => '减脂期建议高蛋白低脂饮食,控制总热量摄入',
+      UserGoal.gainMuscle => '增肌期建议高蛋白高碳水饮食,保证热量盈余',
+      UserGoal.maintain => '保持期建议均衡饮食,维持当前摄入量',
+    };
+
+    return DietAdvice(
+      createdAt: now,
+      goal: goal,
+      eatMore: eatMore,
+      eatLess: eatLess,
+      summary: summary,
+      suggestedCalories: baseCal,
+      suggestedProtein: baseProtein,
+      suggestedFat: baseFat,
+      suggestedCarbs: baseCarbs,
+      suggestedFiber: 25.0,
+      validUntil: now.add(const Duration(days: 3)),
+    );
   }
 }

@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../services/storage_service.dart';
 import '../services/feishu_service.dart';
 import '../services/alarm_service.dart';
+import '../services/ai_service.dart';
 
 /// 全局状态 - 单一数据源(安卓ViewModel统一数据源)
 /// 三页面共享:账号三态、全局参数单向同步、提醒/记录/飞书配置
@@ -195,10 +196,18 @@ class AppState extends ChangeNotifier {
   // ============ 饮食/运动追踪 ============
   final List<FoodRecord> _foodRecords = [];
   final List<ExerciseRecord> _exerciseRecords = [];
+  final List<WeeklyRecord> _weeklyRecords = [];
+  final List<DailyDietSummary> _dailyDietSummaries = [];
+  DietAdvice? _dietAdvice;
+  String _lastFoodClearDate = '';
 
   List<FoodRecord> get foodRecords => List.unmodifiable(_foodRecords);
   List<ExerciseRecord> get exerciseRecords =>
       List.unmodifiable(_exerciseRecords);
+  List<WeeklyRecord> get weeklyRecords => List.unmodifiable(_weeklyRecords);
+  List<DailyDietSummary> get dailyDietSummaries =>
+      List.unmodifiable(_dailyDietSummaries);
+  DietAdvice? get dietAdvice => _dietAdvice;
 
   /// 今日饮食记录
   List<FoodRecord> get todayFoodRecords {
@@ -232,6 +241,349 @@ class AppState extends ChangeNotifier {
 
   /// 今日净摄入 (摄入 - 消耗)
   int get todayNetCalories => todayFoodCalories - todayExerciseCalories;
+
+  /// 今日蛋白质 (g)
+  double get todayProtein =>
+      todayFoodRecords.fold(0.0, (s, r) => s + r.protein);
+
+  /// 今日脂肪 (g)
+  double get todayFat => todayFoodRecords.fold(0.0, (s, r) => s + r.fat);
+
+  /// 今日碳水 (g)
+  double get todayCarbs => todayFoodRecords.fold(0.0, (s, r) => s + r.carbs);
+
+  /// 今日膳食纤维 (g)
+  double get todayFiber => todayFoodRecords.fold(0.0, (s, r) => s + r.fiber);
+
+  /// 每日消耗热量 = 消耗热量 + 基础代谢量 - 摄入热量
+  /// 未填全个人信息时返回 null
+  int? get todayDailyBurn {
+    final bmr = _profile.bmr;
+    if (bmr == null) return null;
+    return todayExerciseCalories + bmr - todayFoodCalories;
+  }
+
+  /// 建议日消耗热量 = BMR - 建议摄入热量
+  /// 减脂:正值(热量缺口);增肌:负值(热量盈余);保持:0
+  /// 未填全个人信息或无建议摄入量时返回 null
+  int? get suggestedDailyBurn {
+    final bmr = _profile.bmr;
+    if (bmr == null) return null;
+    final sugCal = suggestedCalories;
+    if (sugCal == null) return null;
+    return bmr - sugCal;
+  }
+
+  /// 摄入是否低于最低阈值(男1500/女1200)
+  bool get isIntakeTooLow {
+    if (todayFoodCalories <= 0) return false; // 还没记录不算低
+    return todayFoodCalories < _profile.minIntake;
+  }
+
+  /// 本周累计消耗热量(周一至今天,仅运动消耗)
+  int get thisWeekBurnCalories {
+    final now = DateTime.now();
+    // 周一 = 1
+    final weekDay = now.weekday;
+    final monday = now.subtract(Duration(days: weekDay - 1));
+    final startOfWeek = DateTime(monday.year, monday.month, monday.day);
+    return _exerciseRecords
+        .where((r) => r.time.isAfter(startOfWeek))
+        .fold(0, (s, r) => s + r.calories);
+  }
+
+  /// 本周累计净消耗热量(周一至今天)
+  /// = 每日日消耗(运动消耗 + BMR - 摄入)的累计总和
+  /// 今日日消耗实时计算,历史日运动消耗从 _exerciseRecords 直接聚合(保留60天),
+  /// 食物摄入从 DailyDietSummary 读取(食物记录每日清空)
+  /// 未填全个人信息时返回 null
+  int? get thisWeekNetBurnCalories {
+    final bmr = _profile.bmr;
+    if (bmr == null) return null;
+    final now = DateTime.now();
+    final weekDay = now.weekday; // 周一=1...周日=7
+    final monday = now.subtract(Duration(days: weekDay - 1));
+    final startOfWeek = DateTime(monday.year, monday.month, monday.day);
+
+    int total = 0;
+    // 今日日消耗 = 今日运动消耗 + BMR - 今日摄入
+    total += todayExerciseCalories + bmr - todayFoodCalories;
+
+    // 遍历本周已过去的历史日(周一到昨天)
+    for (int i = 0; i < weekDay - 1; i++) {
+      final day = startOfWeek.add(Duration(days: i));
+      // 该日运动消耗(直接从运动记录聚合,运动记录不清空)
+      final exerciseCal = _exerciseRecords
+          .where((r) =>
+              r.time.year == day.year &&
+              r.time.month == day.month &&
+              r.time.day == day.day)
+          .fold(0, (s, r) => s + r.calories);
+      // 该日食物摄入(从 DailyDietSummary 读取,食物记录每日清空)
+      final dayKey = '${day.year}-${day.month}-${day.day}';
+      final summary = _dailyDietSummaries.firstWhere(
+        (s) => '${s.date.year}-${s.date.month}-${s.date.day}' == dayKey,
+        orElse: () => DailyDietSummary(
+            date: DateTime(2000),
+            calories: 0,
+            exerciseCalories: 0,
+            protein: 0,
+            fat: 0,
+            carbs: 0,
+            fiber: 0,
+            foodNames: const []),
+      );
+      total += exerciseCal + bmr - summary.calories;
+    }
+    return total;
+  }
+
+  // ============ 饮食建议(增肌/减脂/保持) ============
+
+  /// 当前有效的建议摄入热量(kcal)
+  /// 优先使用 AI 建议值(含动态调整),无建议时用公式估算
+  /// 最低不得低于 minIntake(男 1500 / 女 1200 kcal),防止减脂建议过低
+  int? get suggestedCalories {
+    final minIntake = _profile.minIntake;
+    if (_dietAdvice != null && _dietAdvice!.isValid) {
+      final raw = _dietAdvice!.suggestedCalories;
+      // 确保不低于最低摄入标准
+      return raw < minIntake ? minIntake : raw;
+    }
+    final base = _calcBaseSuggestedCalories();
+    if (base == null) return null;
+    return base < minIntake ? minIntake : base;
+  }
+
+  /// 当前有效的建议蛋白质(g)
+  double? get suggestedProtein {
+    if (_dietAdvice != null && _dietAdvice!.isValid) {
+      return _dietAdvice!.suggestedProtein;
+    }
+    return _calcBaseSuggestedProtein();
+  }
+
+  /// 当前有效的建议脂肪(g)
+  double? get suggestedFat {
+    if (_dietAdvice != null && _dietAdvice!.isValid) {
+      return _dietAdvice!.suggestedFat;
+    }
+    return _calcBaseSuggestedFat();
+  }
+
+  /// 当前有效的建议碳水(g)
+  double? get suggestedCarbs {
+    if (_dietAdvice != null && _dietAdvice!.isValid) {
+      return _dietAdvice!.suggestedCarbs;
+    }
+    return _calcBaseSuggestedCarbs();
+  }
+
+  /// 当前有效的建议膳食纤维(g)
+  double? get suggestedFiber {
+    if (_dietAdvice != null && _dietAdvice!.isValid) {
+      return _dietAdvice!.suggestedFiber;
+    }
+    return 25.0; // 中国营养学会推荐成人每日 25-30g
+  }
+
+  /// 基础建议热量(根据目标 + BMR 计算)
+  int? _calcBaseSuggestedCalories() {
+    final bmr = _profile.bmr;
+    if (bmr == null) return null;
+    switch (_profile.goal) {
+      case UserGoal.loseFat:
+        return (bmr * 0.8).round(); // 热量缺口 20%
+      case UserGoal.gainMuscle:
+        return (bmr * 1.1).round(); // 热量盈余 10%
+      case UserGoal.maintain:
+        return bmr;
+    }
+  }
+
+  /// 基础建议蛋白质(g/kg 体重)
+  double? _calcBaseSuggestedProtein() {
+    if (_profile.weight <= 0) return null;
+    switch (_profile.goal) {
+      case UserGoal.loseFat:
+        return _profile.weight * 1.5; // 减脂需高蛋白保肌肉
+      case UserGoal.gainMuscle:
+        return _profile.weight * 2.0; // 增肌需高蛋白
+      case UserGoal.maintain:
+        return _profile.weight * 1.2;
+    }
+  }
+
+  /// 基础建议脂肪(g/kg 体重)
+  double? _calcBaseSuggestedFat() {
+    if (_profile.weight <= 0) return null;
+    switch (_profile.goal) {
+      case UserGoal.loseFat:
+        return _profile.weight * 0.6; // 减脂控脂肪
+      case UserGoal.gainMuscle:
+        return _profile.weight * 0.8;
+      case UserGoal.maintain:
+        return _profile.weight * 0.7;
+    }
+  }
+
+  /// 基础建议碳水(g/kg 体重)
+  double? _calcBaseSuggestedCarbs() {
+    if (_profile.weight <= 0) return null;
+    switch (_profile.goal) {
+      case UserGoal.loseFat:
+        return _profile.weight * 2.0; // 减脂控碳水
+      case UserGoal.gainMuscle:
+        return _profile.weight * 4.0; // 增肌高碳水
+      case UserGoal.maintain:
+        return _profile.weight * 3.0;
+    }
+  }
+
+  /// 设置用户目标
+  void setUserGoal(UserGoal goal) {
+    _profile = _profile.copyWith(goal: goal);
+    StorageService.saveProfile(_profile);
+    notifyListeners();
+  }
+
+  /// 保存 AI 生成的饮食建议
+  void setDietAdvice(DietAdvice advice) {
+    _dietAdvice = advice;
+    StorageService.saveDietAdvice(advice);
+    notifyListeners();
+  }
+
+  /// 触发 AI 饮食分析,生成个性化建议
+  /// 取最近 N 天的饮食摘要 + 今日实时数据 + 用户目标 + 个人信息,调用 AiService 生成 DietAdvice
+  /// 返回 (success, message)
+  Future<(bool success, String message)> triggerDietAnalysis({
+    int recentDays = 7,
+  }) async {
+    if (!_profile.profileComplete) {
+      return (false, '请先完善个人信息(性别/年龄/身高/体重)');
+    }
+
+    // 取最近 recentDays 天的摘要(不含今天,因为今天的还在记录中)
+    final today = DateTime.now();
+    final cutoff = today.subtract(Duration(days: recentDays));
+    final recent = _dailyDietSummaries
+        .where((s) => s.date.isAfter(cutoff) && s.date.isBefore(DateTime(today.year, today.month, today.day)))
+        .toList();
+
+    // 构造今日实时摘要(含运动消耗),让 AI 看到今日真实摄入情况
+    final todayFood = todayFoodRecords;
+    final todaySummary = DailyDietSummary(
+      date: DateTime(today.year, today.month, today.day),
+      calories: todayFood.fold(0, (s, r) => s + r.calories),
+      exerciseCalories: todayExerciseCalories,
+      protein: todayFood.fold(0.0, (s, r) => s + r.protein),
+      fat: todayFood.fold(0.0, (s, r) => s + r.fat),
+      carbs: todayFood.fold(0.0, (s, r) => s + r.carbs),
+      fiber: todayFood.fold(0.0, (s, r) => s + r.fiber),
+      foodNames: todayFood.map((r) => r.name).toSet().toList(),
+    );
+
+    // 调用 AI 服务生成建议(同时传递今日实时数据)
+    final advice = await AiService.analyzeDietAndAdvise(
+      recentSummaries: recent,
+      todaySummary: todaySummary,
+      goal: _profile.goal,
+      profile: _profile,
+    );
+
+    if (advice == null) {
+      return (false, 'AI 分析失败,请检查网络或 API Key 后重试');
+    }
+
+    setDietAdvice(advice);
+    return (true, '已生成新的饮食建议,有效期至 ${advice.validUntil.month}-${advice.validUntil.day}');
+  }
+
+  /// 检查昨日摄入是否超量/不足,动态调整未来三天的建议值
+  /// 在每日清空食物记录前调用
+  void _adjustAdviceBasedOnYesterday() {
+    if (_dietAdvice == null || !_dietAdvice!.isValid) return;
+
+    final today = DateTime.now();
+    final yesterday = today.subtract(const Duration(days: 1));
+    // 从饮食摘要历史中找昨天的记录
+    DailyDietSummary? yesterdaySummary;
+    for (final s in _dailyDietSummaries) {
+      if (s.date.year == yesterday.year &&
+          s.date.month == yesterday.month &&
+          s.date.day == yesterday.day) {
+        yesterdaySummary = s;
+        break;
+      }
+    }
+    if (yesterdaySummary == null) return;
+
+    final advice = _dietAdvice!;
+    double newCalories = advice.suggestedCalories.toDouble();
+    double newProtein = advice.suggestedProtein;
+    double newFat = advice.suggestedFat;
+    double newCarbs = advice.suggestedCarbs;
+    double newFiber = advice.suggestedFiber;
+    bool changed = false;
+
+    if (advice.goal == UserGoal.loseFat) {
+      // 减脂:超量则未来三天建议少摄入 10%;纤维不足则增加 20%
+      if (yesterdaySummary.calories > advice.suggestedCalories * 1.1) {
+        newCalories *= 0.9;
+        changed = true;
+      }
+      if (yesterdaySummary.carbs > advice.suggestedCarbs * 1.1) {
+        newCarbs *= 0.9;
+        changed = true;
+      }
+      if (yesterdaySummary.fat > advice.suggestedFat * 1.1) {
+        newFat *= 0.9;
+        changed = true;
+      }
+      if (yesterdaySummary.fiber < advice.suggestedFiber * 0.8) {
+        newFiber *= 1.2;
+        changed = true;
+      }
+    } else if (advice.goal == UserGoal.gainMuscle) {
+      // 增肌:摄入不足则未来三天建议增加 10%
+      if (yesterdaySummary.protein < advice.suggestedProtein * 0.9) {
+        newProtein *= 1.1;
+        changed = true;
+      }
+      if (yesterdaySummary.carbs < advice.suggestedCarbs * 0.9) {
+        newCarbs *= 1.1;
+        changed = true;
+      }
+      if (yesterdaySummary.calories < advice.suggestedCalories * 0.9) {
+        newCalories *= 1.1;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      // 确保热量不低于最低摄入标准(男 1500 / 女 1200 kcal)
+      final minIntake = _profile.minIntake;
+      final finalCalories = newCalories.round() < minIntake
+          ? minIntake
+          : newCalories.round();
+      _dietAdvice = DietAdvice(
+        createdAt: advice.createdAt,
+        goal: advice.goal,
+        eatMore: advice.eatMore,
+        eatLess: advice.eatLess,
+        summary: advice.summary,
+        suggestedCalories: finalCalories,
+        suggestedProtein: newProtein,
+        suggestedFat: newFat,
+        suggestedCarbs: newCarbs,
+        suggestedFiber: newFiber,
+        validUntil: advice.validUntil,
+      );
+      StorageService.saveDietAdvice(_dietAdvice);
+      debugPrint('[AppState] 已动态调整建议值: cal=$finalCalories protein=$newProtein carbs=$newCarbs fat=$newFat fiber=$newFiber');
+    }
+  }
 
   // ============ 同步至飞书打卡记忆 ============
   bool _rememberSyncToFeishu = true;
@@ -282,6 +634,145 @@ class AppState extends ChangeNotifier {
     _exerciseRecords
       ..clear()
       ..addAll(d.exerciseRecords.where((r) => r.time.isAfter(cutoff)));
+    _weeklyRecords
+      ..clear()
+      ..addAll(d.weeklyRecords);
+    _dailyDietSummaries
+      ..clear()
+      ..addAll(d.dailyDietSummaries);
+    _dietAdvice = d.dietAdvice;
+    _lastFoodClearDate = d.lastFoodClearDate;
+    // 启动时检查是否需要按日清空食物记录(内部会保存昨日摘要并动态调整建议)
+    _checkDailyFoodClear();
+    // 启动时检查是否需要记录周末周报
+    _checkWeeklyRecord();
+  }
+
+  /// 检查每日食物记录清空:日期变更则清空今日之前的食物记录
+  /// 清空前会先把昨日(及之前未保存的)饮食数据汇总成 DailyDietSummary 保存到历史
+  /// 然后基于昨日数据动态调整未来三天的建议摄入量
+  void _checkDailyFoodClear() {
+    final today = DateTime.now();
+    final todayStr = '${today.year}-${today.month}-${today.day}';
+    if (_lastFoodClearDate != todayStr) {
+      // 把所有非今日的食物记录按日聚合保存为 DailyDietSummary(供 AI 分析历史饮食)
+      _saveDailySummariesBeforeClear(today);
+
+      // 日期已变更,清空非今日的食物记录(保留运动记录历史)
+      _foodRecords.removeWhere((r) =>
+          r.time.year != today.year ||
+          r.time.month != today.month ||
+          r.time.day != today.day);
+      _lastFoodClearDate = todayStr;
+      StorageService.saveLastFoodClearDate(todayStr);
+      StorageService.saveFoodRecords(_foodRecords);
+
+      // 基于昨日数据动态调整未来三天建议值(必须在保存摘要之后调用)
+      _adjustAdviceBasedOnYesterday();
+
+      debugPrint('[AppState] 已按日清空食物记录, date=$todayStr');
+    }
+  }
+
+  /// 清空前把非今日的食物记录按日聚合保存为 DailyDietSummary
+  /// 仅保存已有摘要缺失的日期,避免重复
+  void _saveDailySummariesBeforeClear(DateTime today) {
+    if (_foodRecords.isEmpty) return;
+    // 找出所有非今日的食物记录
+    final oldRecords = _foodRecords.where((r) =>
+        r.time.year != today.year ||
+        r.time.month != today.month ||
+        r.time.day != today.day);
+
+    // 按日分组
+    final Map<String, List<FoodRecord>> byDay = {};
+    for (final r in oldRecords) {
+      final key = '${r.time.year}-${r.time.month}-${r.time.day}';
+      byDay.putIfAbsent(key, () => []).add(r);
+    }
+
+    bool added = false;
+    byDay.forEach((key, list) {
+      // 已存在该日摘要则跳过
+      final exists = _dailyDietSummaries.any((s) =>
+          '${s.date.year}-${s.date.month}-${s.date.day}' == key);
+      if (exists) return;
+      final date = DateTime(list.first.time.year, list.first.time.month, list.first.time.day);
+      // 同日的运动消耗(运动记录不清空,需从全量运动记录中按日聚合)
+      final exerciseCalories = _exerciseRecords
+          .where((e) =>
+              e.time.year == date.year &&
+              e.time.month == date.month &&
+              e.time.day == date.day)
+          .fold(0, (s, r) => s + r.calories);
+      _dailyDietSummaries.add(DailyDietSummary(
+        date: date,
+        calories: list.fold(0, (s, r) => s + r.calories),
+        exerciseCalories: exerciseCalories,
+        protein: list.fold(0.0, (s, r) => s + r.protein),
+        fat: list.fold(0.0, (s, r) => s + r.fat),
+        carbs: list.fold(0.0, (s, r) => s + r.carbs),
+        fiber: list.fold(0.0, (s, r) => s + r.fiber),
+        foodNames: list.map((r) => r.name).toSet().toList(),
+      ));
+      added = true;
+    });
+
+    if (added) {
+      // 仅保留最近 30 天摘要
+      _dailyDietSummaries.sort((a, b) => a.date.compareTo(b.date));
+      if (_dailyDietSummaries.length > 30) {
+        _dailyDietSummaries.removeRange(0, _dailyDietSummaries.length - 30);
+      }
+      StorageService.saveDailyDietSummaries(_dailyDietSummaries);
+    }
+  }
+
+  /// 手动清空今日食物摄入记录
+  void clearTodayFoodRecords() {
+    final today = DateTime.now();
+    _foodRecords.removeWhere((r) =>
+        r.time.year == today.year &&
+        r.time.month == today.month &&
+        r.time.day == today.day);
+    StorageService.saveFoodRecords(_foodRecords);
+    notifyListeners();
+  }
+
+  /// 检查是否需要记录周末周报(周六或周日触发,每天最多一次)
+  void _checkWeeklyRecord() {
+    final now = DateTime.now();
+    // 仅在周六(6)或周日(7)触发
+    if (now.weekday != DateTime.saturday && now.weekday != DateTime.sunday) {
+      return;
+    }
+    // 当天已记录则跳过
+    if (_weeklyRecords.any((r) =>
+        r.date.year == now.year &&
+        r.date.month == now.month &&
+        r.date.day == now.day)) {
+      return;
+    }
+    addWeeklyRecord();
+  }
+
+  /// 新增一条周末周报记录
+  void addWeeklyRecord() {
+    final now = DateTime.now();
+    final record = WeeklyRecord(
+      id: 'w${now.millisecondsSinceEpoch}',
+      date: now,
+      bmi: _profile.bmi,
+      weeklyBurnCalories: thisWeekBurnCalories,
+    );
+    _weeklyRecords.add(record);
+    // 仅保留最近 12 周
+    if (_weeklyRecords.length > 12) {
+      _weeklyRecords.removeRange(0, _weeklyRecords.length - 12);
+    }
+    StorageService.saveWeeklyRecords(_weeklyRecords);
+    notifyListeners();
+    debugPrint('[AppState] 已记录周末周报: bmi=${record.bmi}, burn=${record.weeklyBurnCalories}');
   }
 
   // ===================== 动作 =====================

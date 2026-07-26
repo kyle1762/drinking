@@ -17,6 +17,11 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32"/>
+    <!-- 日历权限(device_calendar 批量添加/删除日历事件) -->
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <uses-permission android:name="android.permission.WRITE_CALENDAR"/>
+    <!-- 系统闹钟权限(android_intent_plus ACTION_SET_ALARM) -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>
 
     <application
         android:label="喝水小精灵"
@@ -60,6 +65,20 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- 系统闹钟 intent(Android 11+ 包可见性) -->
+        <intent>
+            <action android:name="android.intent.action.SET_ALARM"/>
+            <category android:name="android.intent.category.DEFAULT"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS"/>
+            <category android:name="android.intent.category.DEFAULT"/>
+        </intent>
+        <!-- 日历 intent(Android 11+ 包可见性) -->
+        <intent>
+            <action android:name="android.intent.action.INSERT"/>
+            <data android:mimeType="vnd.android.cursor.dir/event"/>
         </intent>
         <!-- 飞书 App 自定义 scheme(Android 11+ 包可见性) -->
         <intent>

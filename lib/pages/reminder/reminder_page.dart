@@ -8,6 +8,8 @@ import '../../dialogs.dart';
 import '../../services/alarm_service.dart';
 import '../../services/audio_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/calendar_alarm_service.dart';
+import '../../services/storage_service.dart';
 import '../stats/stats_page.dart';
 
 class ReminderPage extends StatelessWidget {
@@ -35,6 +37,7 @@ class ReminderPage extends StatelessWidget {
             _TimeRangeModule(),
             _DndModule(),
             _EarphoneModule(),
+            _CalendarAlarmModule(),
             const SizedBox(height: 16),
             _BottomActions(),
           ],
@@ -694,6 +697,573 @@ class _EarphoneModule extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 日历 & 闹钟批量操作模块
+/// 用户可将提醒时间批量添加到手机日历和闹钟,支持一键清除
+class _CalendarAlarmModule extends StatefulWidget {
+  @override
+  State<_CalendarAlarmModule> createState() => _CalendarAlarmModuleState();
+}
+
+class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
+  List<CalendarEventRef> _calendarRefs = [];
+  List<AlarmTimeRecord> _alarmTimes = [];
+  List<DateTime> _reminderTimes = [];
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+  }
+
+  void _loadData() {
+    final s = context.read<AppState>();
+    setState(() {
+      _calendarRefs = StorageService.loadCalendarEventIds();
+      _alarmTimes = StorageService.loadAlarmTimes();
+      _reminderTimes = CalendarAlarmService.generateReminderTimes(
+        wakeTime: s.profile.wakeTime,
+        bedTime: s.profile.bedTime,
+        intervalMinutes: s.loopInterval,
+      );
+    });
+  }
+
+  /// 批量添加日历事件
+  Future<void> _batchAddCalendar() async {
+    if (_reminderTimes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('今日剩余提醒时间为空,请检查作息设置')),
+      );
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      // 先清除上次的日历事件,避免重复
+      if (_calendarRefs.isNotEmpty) {
+        await CalendarAlarmService.clearCalendarEvents(_calendarRefs);
+      }
+      final refs = await CalendarAlarmService.batchAddCalendarEvents(
+        title: '喝水提醒',
+        times: _reminderTimes,
+      );
+      await StorageService.saveCalendarEventIds(refs);
+      if (mounted) {
+        setState(() {
+          _calendarRefs = refs;
+          _loading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(refs.isEmpty
+                ? '日历事件添加失败,请检查日历权限'
+                : '已添加 ${refs.length} 个日历提醒事件(每日重复)'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('日历添加异常: $e')),
+        );
+      }
+    }
+  }
+
+  /// 添加闹钟(打开底部弹窗,用户逐个添加)
+  void _batchAddAlarms() {
+    if (_reminderTimes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('今日剩余提醒时间为空,请检查作息设置')),
+      );
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.cream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _AlarmAddSheet(
+        times: _reminderTimes,
+        alreadyAdded: _alarmTimes,
+        onAllDone: (added) async {
+          await StorageService.saveAlarmTimes(added);
+          if (mounted) {
+            setState(() => _alarmTimes = added);
+          }
+        },
+      ),
+    );
+  }
+
+  /// 一键清除上次添加的日历和闹钟
+  void _clearAll() {
+    if (_calendarRefs.isEmpty && _alarmTimes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有已添加的日历事件或闹钟记录')),
+      );
+      return;
+    }
+
+    AppDialogs.confirm(
+      context,
+      title: '一键清除',
+      content: '将删除 ${_calendarRefs.length} 个日历事件'
+          '${_alarmTimes.isNotEmpty ? '并打开时钟App引导删除 ${_alarmTimes.length} 个闹钟' : ''}'
+          '。是否继续?',
+      confirmText: '清除',
+      onConfirm: () => _performClear(),
+    );
+  }
+
+  /// 执行一键清除(在确认对话框后调用)
+  Future<void> _performClear() async {
+    setState(() => _loading = true);
+
+    // 先保存需要显示的信息(清除前)
+    final alarmCount = _alarmTimes.length;
+    final alarmListStr = _alarmTimes.map((a) => a.timeStr).join('、');
+
+    int deletedCalendar = 0;
+    // 1. 删除日历事件
+    if (_calendarRefs.isNotEmpty) {
+      deletedCalendar =
+          await CalendarAlarmService.clearCalendarEvents(_calendarRefs);
+      await StorageService.saveCalendarEventIds([]);
+    }
+
+    // 2. 清除闹钟追踪记录(闹钟本身需用户手动删除)
+    await StorageService.saveAlarmTimes([]);
+
+    if (mounted) {
+      setState(() {
+        _calendarRefs = [];
+        _alarmTimes = [];
+        _loading = false;
+      });
+
+      // 3. 如果有闹钟,打开时钟App引导用户手动删除
+      if (alarmCount > 0) {
+        AppDialogs.confirm(
+          context,
+          title: '请手动删除闹钟',
+          content: '已删除 $deletedCalendar 个日历事件。\n'
+              '由于系统限制,闹钟需手动删除。以下 $alarmCount 个闹钟需要删除:\n$alarmListStr\n\n'
+              '点击「去删除」打开时钟App。',
+          confirmText: '去删除',
+          onConfirm: () async {
+            await CalendarAlarmService.openAlarmApp();
+          },
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已删除 $deletedCalendar 个日历事件')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const SectionTitle('日历 & 闹钟'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: CreamCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 说明文字
+                const Row(
+                  children: [
+                    Icon(Icons.event_available_outlined,
+                        size: 16, color: AppColors.softBlueDeep),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text('将提醒时间批量添加到手机日历和闹钟',
+                          style: TextStyle(
+                              color: AppColors.textSecondary, fontSize: 12)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // 今日提醒时间预览
+                if (_reminderTimes.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.paused,
+                      borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '今日剩余 ${_reminderTimes.length} 个提醒时间',
+                          style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          children: _reminderTimes.take(8).map((t) {
+                            return Text(
+                              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
+                              style: const TextStyle(
+                                  color: AppColors.softBlueDeep,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600),
+                            );
+                          }).toList(),
+                        ),
+                        if (_reminderTimes.length > 8)
+                          const Text('...',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 12)),
+                      ],
+                    ),
+                  ),
+
+                const SizedBox(height: 12),
+
+                // 添加日历按钮
+                SizedBox(
+                  width: double.infinity,
+                  child: RippleButton(
+                    onTap: _loading ? null : _batchAddCalendar,
+                    borderRadius: AppThemeRadius.s,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.mint,
+                        borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                      ),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.calendar_today_outlined,
+                              size: 16, color: AppColors.mintDeep),
+                          const SizedBox(width: 6),
+                          Text(
+                            _loading
+                                ? '正在添加...'
+                                : '添加日历提醒 ${_calendarRefs.isNotEmpty ? "(已添加${_calendarRefs.length}个)" : ""}',
+                            style: const TextStyle(
+                                color: AppColors.mintDeep,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // 添加闹钟按钮
+                SizedBox(
+                  width: double.infinity,
+                  child: RippleButton(
+                    onTap: _batchAddAlarms,
+                    borderRadius: AppThemeRadius.s,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.softBlue,
+                        borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                      ),
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.alarm_add_outlined,
+                              size: 16, color: AppColors.softBlueDeep),
+                          const SizedBox(width: 6),
+                          Text(
+                            '添加闹钟提醒 ${_alarmTimes.isNotEmpty ? "(已添加${_alarmTimes.length}个)" : ""}',
+                            style: const TextStyle(
+                                color: AppColors.softBlueDeep,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // 一键清除按钮
+                if (_calendarRefs.isNotEmpty || _alarmTimes.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: RippleButton(
+                      onTap: _loading ? null : _clearAll,
+                      borderRadius: AppThemeRadius.s,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.paused,
+                          borderRadius:
+                              BorderRadius.circular(AppThemeRadius.s),
+                          border: Border.all(
+                              color: AppColors.textSecondary.withAlpha(50)),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.delete_outline,
+                                size: 16, color: AppColors.textSecondary),
+                            SizedBox(width: 6),
+                            Text('一键清除上次添加的日历和闹钟',
+                                style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 闹钟添加底部弹窗 - 用户逐个添加闹钟到系统时钟App
+class _AlarmAddSheet extends StatefulWidget {
+  final List<DateTime> times;
+  final List<AlarmTimeRecord> alreadyAdded;
+  final Future<void> Function(List<AlarmTimeRecord>) onAllDone;
+
+  const _AlarmAddSheet({
+    required this.times,
+    required this.alreadyAdded,
+    required this.onAllDone,
+  });
+
+  @override
+  State<_AlarmAddSheet> createState() => _AlarmAddSheetState();
+}
+
+class _AlarmAddSheetState extends State<_AlarmAddSheet> {
+  late Set<int> _addedIndices;
+
+  @override
+  void initState() {
+    super.initState();
+    // 标记已添加的时间(通过小时+分钟匹配)
+    _addedIndices = {};
+    for (var i = 0; i < widget.times.length; i++) {
+      final t = widget.times[i];
+      for (final a in widget.alreadyAdded) {
+        if (a.hour == t.hour && a.minute == t.minute) {
+          _addedIndices.add(i);
+          break;
+        }
+      }
+    }
+  }
+
+  Future<void> _addAlarm(int index) async {
+    final t = widget.times[index];
+    final ok = await CalendarAlarmService.setAlarm(
+      hour: t.hour,
+      minute: t.minute,
+      label: '喝水提醒',
+    );
+    if (ok && mounted) {
+      setState(() {
+        _addedIndices.add(index);
+      });
+      // 更新存储
+      final records = <AlarmTimeRecord>[];
+      for (var i = 0; i < widget.times.length; i++) {
+        if (_addedIndices.contains(i)) {
+          final time = widget.times[i];
+          records.add(AlarmTimeRecord(
+            hour: time.hour,
+            minute: time.minute,
+          ));
+        }
+      }
+      // 合并已添加的旧记录
+      for (final old in widget.alreadyAdded) {
+        final exists = records.any(
+            (r) => r.hour == old.hour && r.minute == old.minute);
+        if (!exists) {
+          records.add(old);
+        }
+      }
+      await widget.onAllDone(records);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining =
+        widget.times.length - _addedIndices.length;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 标题
+            Row(
+              children: [
+                const Icon(Icons.alarm_add_outlined,
+                    size: 20, color: AppColors.softBlueDeep),
+                const SizedBox(width: 8),
+                const Text('添加闹钟提醒',
+                    style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Text('$remaining / ${widget.times.length} 待添加',
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+                '点击时间添加闹钟到系统时钟App。每个闹钟会在时钟App中打开确认页面,保存后返回继续添加下一个。',
+                style: TextStyle(
+                    color: AppColors.textSecondary, fontSize: 12)),
+            const SizedBox(height: 16),
+
+            // 时间列表
+            ...widget.times.asMap().entries.map((entry) {
+              final i = entry.key;
+              final t = entry.value;
+              final added = _addedIndices.contains(i);
+              final timeStr =
+                  '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: RippleButton(
+                  onTap: added ? null : () => _addAlarm(i),
+                  borderRadius: AppThemeRadius.s,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: added ? AppColors.mint : AppColors.paused,
+                      borderRadius:
+                          BorderRadius.circular(AppThemeRadius.s),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          added ? Icons.check_circle : Icons.alarm,
+                          size: 18,
+                          color: added
+                              ? AppColors.mintDeep
+                              : AppColors.softBlueDeep,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(timeStr,
+                            style: TextStyle(
+                              color: added
+                                  ? AppColors.mintDeep
+                                  : AppColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            )),
+                        const Spacer(),
+                        Text(
+                          added ? '已添加' : '点击添加',
+                          style: TextStyle(
+                            color: added
+                                ? AppColors.mintDeep
+                                : AppColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+            const SizedBox(height: 8),
+
+            // 全部添加完成提示
+            if (remaining == 0)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.mint,
+                  borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.check_circle_outline,
+                        size: 18, color: AppColors.mintDeep),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text('所有闹钟已添加完成!',
+                          style: TextStyle(
+                              color: AppColors.mintDeep,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+              ),
+
+            // 关闭按钮
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: RippleButton(
+                onTap: () => Navigator.of(context).pop(),
+                borderRadius: AppThemeRadius.s,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: AppColors.softBlueDeep,
+                    borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text('完成',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
