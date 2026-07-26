@@ -1247,7 +1247,7 @@ class AppState extends ChangeNotifier {
   bool get inDndPeriod {
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
-    if (_nightDnd && (hm >= 22 * 60 || hm < 7 * 60)) return true;
+    if (_nightDnd && (hm >= 22 * 60 || hm < 8 * 60)) return true;
     // 午休免打扰:12:30 ~ 14:30
     if (_noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return true;
     if (_focusMinutes != null) return true;
@@ -1259,7 +1259,7 @@ class AppState extends ChangeNotifier {
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
     if (_focusMinutes != null) return '专注模式中';
-    if (_nightDnd && (hm >= 22 * 60 || hm < 7 * 60)) return '夜间免打扰';
+    if (_nightDnd && (hm >= 22 * 60 || hm < 8 * 60)) return '夜间免打扰';
     if (_noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return '午休免打扰';
     return '';
   }

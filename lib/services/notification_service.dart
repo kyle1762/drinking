@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../models/models.dart';
-import 'audio_service.dart';
 import 'feishu_service.dart';
 
 /// 通知服务 - 基于 flutter_local_notifications
@@ -24,14 +22,7 @@ class NotificationService {
   // SharedPreferences key 常量(与 StorageService 保持一致)
   static const _kNightDnd = 'nightDnd';
   static const _kNoonDnd = 'noonDnd';
-  static const _kRangeStart = 'rangeStart';
-  static const _kRangeEnd = 'rangeEnd';
   static const _kRepeat = 'repeat';
-  static const _kSound = 'sound';
-  // 扬声器提醒开关(新增,兼容旧 earphoneEnabled)
-  static const _kSpeakerEnabled = 'speakerEnabled';
-  static const _kLegacyEarphoneEnabled = 'earphoneEnabled';
-  static const _kEarphoneVolume = 'earphoneVolume';
 
   // 今日提醒次数持久化 key
   static const _kTodayReminderCount = 'todayReminderCount';
@@ -144,12 +135,8 @@ class NotificationService {
       return;
     }
 
-    // 提醒时段检查
-    if (!_isInRangeTime(prefs)) {
-      debugPrint('[AlarmFired] 不在提醒时段内,跳过提醒(弹静默提示)');
-      await _showSkippedNotification('当前不在提醒时段内,已静音提醒');
-      return;
-    }
+    // 提醒生效时段界面已移除,不再检查时段范围
+    // (保留重复周期检查)
 
     // 重复周期检查
     if (!_isRepeatDay(prefs)) {
@@ -166,27 +153,10 @@ class NotificationService {
       debugPrint('[AlarmFired] showReminder 异常: $e');
     }
 
-    // 2. 并行启动飞书推送(关键任务)和音效播放(非关键)
-    // 只 await 飞书推送,音效播放 fire-and-forget
-    // 避免音效的 8 秒等待阻塞飞书推送,导致 isolate 被杀推送失败
-    debugPrint('[AlarmFired] 启动飞书推送(并行)');
+    // 2. 启动飞书推送(关键任务)
+    // 音效功能已移除,只保留通知 + 飞书推送
+    debugPrint('[AlarmFired] 启动飞书推送');
     final pushFuture = FeishuService.pushReminderFromBackground();
-
-    // 音效播放(fire-and-forget,不 await,让它在后台继续播放)
-    final speakerOn = prefs.getBool(_kSpeakerEnabled) ??
-        prefs.getBool(_kLegacyEarphoneEnabled) ??
-        true;
-    if (speakerOn) {
-      final soundName = prefs.getString(_kSound);
-      final sound = SoundType.fromName(soundName);
-      final volume = prefs.getDouble(_kEarphoneVolume) ?? 0.6;
-      debugPrint('[AlarmFired] 启动音效播放(并行): ${sound.file}, 音量: $volume');
-      // 故意不 await:音效播放不阻塞 onAlarmFired 退出
-      // 即使 isolate 在音效播放期间被杀,飞书推送也已并行完成
-      AudioService.playFromBackground(sound, volume: volume);
-    } else {
-      debugPrint('[AlarmFired] 扬声器提醒已关闭,仅显示通知');
-    }
 
     // 3. 等待飞书推送完成(关键任务,必须等待)
     try {
@@ -233,7 +203,7 @@ class NotificationService {
     }
   }
 
-  /// 测试提醒:跳过所有条件检查,直接执行通知+音效+飞书推送
+  /// 测试提醒:跳过所有条件检查,直接执行通知+飞书推送
   /// 用于验证闹钟机制是否正常工作
   @pragma('vm:entry-point')
   static Future<void> onTestAlarmFired() async {
@@ -248,15 +218,7 @@ class NotificationService {
     );
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    final speakerOn = prefs.getBool(_kSpeakerEnabled) ??
-        prefs.getBool(_kLegacyEarphoneEnabled) ??
-        true;
-    if (speakerOn) {
-      final soundName = prefs.getString(_kSound);
-      final sound = SoundType.fromName(soundName);
-      final volume = prefs.getDouble(_kEarphoneVolume) ?? 0.6;
-      await AudioService.playFromBackground(sound, volume: volume);
-    }
+    // 音效功能已移除,只保留通知 + 飞书推送
     await FeishuService.pushReminderFromBackground();
     await _recordReminderFired(prefs);
     debugPrint('[TestAlarm] 测试提醒流程完成');
@@ -287,37 +249,11 @@ class NotificationService {
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
 
-    if (nightDnd && (hm >= 22 * 60 || hm < 7 * 60)) return true;
+    if (nightDnd && (hm >= 22 * 60 || hm < 8 * 60)) return true;
     // 午休免打扰:12:30 ~ 14:30
     if (noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return true;
 
     return false;
-  }
-
-  /// 检查当前是否在提醒生效时段内
-  static bool _isInRangeTime(SharedPreferences prefs) {
-    final start = prefs.getString(_kRangeStart) ?? '08:00';
-    final end = prefs.getString(_kRangeEnd) ?? '21:00';
-
-    final startParts = start.split(':');
-    final endParts = end.split(':');
-    if (startParts.length != 2 || endParts.length != 2) return true;
-
-    final startH = int.tryParse(startParts[0]);
-    final startM = int.tryParse(startParts[1]);
-    final endH = int.tryParse(endParts[0]);
-    final endM = int.tryParse(endParts[1]);
-    if (startH == null || startM == null || endH == null || endM == null) {
-      return true; // 解析失败时不拦截,默认允许提醒
-    }
-
-    final startMin = startH * 60 + startM;
-    final endMin = endH * 60 + endM;
-
-    final now = DateTime.now();
-    final nowMin = now.hour * 60 + now.minute;
-
-    return nowMin >= startMin && nowMin <= endMin;
   }
 
   /// 检查今天是否属于重复周期

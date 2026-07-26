@@ -7,7 +7,6 @@ import 'pages/home_page.dart';
 import 'services/storage_service.dart';
 import 'services/notification_service.dart';
 import 'services/alarm_service.dart';
-import 'services/audio_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,8 +20,6 @@ void main() async {
   await NotificationService.init();
   // 初始化闹钟服务
   await AlarmService.init();
-  // 初始化音频服务(配置混合模式 AudioContext)
-  await AudioService.init();
   runApp(const DrinkingApp());
 }
 

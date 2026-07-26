@@ -6,7 +6,6 @@ import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
 import '../../dialogs.dart';
 import '../../services/alarm_service.dart';
-import '../../services/audio_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/calendar_alarm_service.dart';
 import '../../services/storage_service.dart';
@@ -32,11 +31,9 @@ class ReminderPage extends StatelessWidget {
               ),
             const PunchButton(),
             const SizedBox(height: 8),
-            const RecordList(),
+            const _TodayRecordExpandable(),
             _ReminderModule(),
-            _TimeRangeModule(),
             _DndModule(),
-            _EarphoneModule(),
             _CalendarAlarmModule(),
             const SizedBox(height: 16),
             _BottomActions(),
@@ -175,20 +172,16 @@ class _ReminderModule extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Column(
       children: [
-        SectionTitle('定时提醒'),
-        SizedBox(height: 12),
+        SizedBox(height: 4),
         _LoopReminder(),
       ],
     );
   }
 }
 
-/// 循环提醒 - 快捷间隔 + 自定义滑块(含加减5分钟按钮)
+/// 循环提醒 - 快捷间隔(20/60分钟) + 两侧±5分钟微调
 class _LoopReminder extends StatelessWidget {
   const _LoopReminder();
-
-  // 快捷间隔:20分钟、40分钟、60分钟
-  static const _quick = [20, 40, 60];
 
   @override
   Widget build(BuildContext context) {
@@ -199,45 +192,18 @@ class _LoopReminder extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('快捷间隔',
-                style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 12),
-            Row(
-              children: _quick.asMap().entries.map((entry) {
-                final i = entry.key;
-                final m = entry.value;
-                final selected = s.loopInterval == m;
-                return Expanded(
-                  child: Padding(
-                    padding:
-                        EdgeInsets.only(right: i < _quick.length - 1 ? 8 : 0),
-                    child: _Chip(
-                      label: '$m分钟',
-                      selected: selected,
-                      onTap: () {
-                        // 统一入口:保存配置 + 重注册闹钟 + 同步下次提醒时间
-                        s.applyLoopInterval(m);
-                      },
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 20),
+            // 标题行:左为「定时提醒」,右为当前间隔时间
             Row(
               children: [
-                const Text('自定义间隔',
+                const Text('定时提醒',
                     style: TextStyle(
                         color: AppColors.textPrimary,
                         fontSize: 14,
                         fontWeight: FontWeight.w600)),
                 const Spacer(),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.softBlue,
                     borderRadius: BorderRadius.circular(AppThemeRadius.s),
@@ -250,37 +216,42 @@ class _LoopReminder extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            // 加减5分钟按钮 + 滑块(最小1分钟,最大240分钟)
+            const SizedBox(height: 12),
+            // 间隔按钮行: [-5分钟] [20分钟] [60分钟] [+5分钟]
             Row(
               children: [
                 _stepButton(
                   icon: Icons.remove,
                   onTap: () => _adjustInterval(s, -5),
                 ),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: Slider(
-                    min: 1,
-                    max: 240,
-                    divisions: 239,
-                    value: s.loopInterval.toDouble().clamp(1, 240),
-                    onChanged: (v) => s.setLoopInterval(v.round()),
-                    onChangeEnd: (v) {
-                      // 滑动结束时统一应用:重注册闹钟 + 同步下次提醒时间
-                      s.applyLoopInterval(v.round());
-                    },
+                  child: _Chip(
+                    label: '20分钟',
+                    selected: s.loopInterval == 20,
+                    onTap: () => s.applyLoopInterval(20),
                   ),
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _Chip(
+                    label: '60分钟',
+                    selected: s.loopInterval == 60,
+                    onTap: () => s.applyLoopInterval(60),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 _stepButton(
                   icon: Icons.add,
                   onTap: () => _adjustInterval(s, 5),
                 ),
               ],
             ),
-            const Text('滑动调整 1~240 分钟,或点击 ±5 分钟微调',
+            const SizedBox(height: 6),
+            const Text('点击 20/60 分钟快速切换,或点击 ±5 分钟微调(最小1分钟)',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
             const SizedBox(height: 16),
-            // 立即测试:直接触发通知+音效+飞书(不经过闹钟调度)
+            // 立即测试:直接触发通知+飞书(不经过闹钟调度)
             SizedBox(
               width: double.infinity,
               child: RippleButton(
@@ -295,7 +266,7 @@ class _LoopReminder extends StatelessWidget {
                     borderRadius: BorderRadius.circular(AppThemeRadius.s),
                   ),
                   alignment: Alignment.center,
-                  child: const Text('立即测试提醒 (通知+音效+飞书)',
+                  child: const Text('立即测试提醒 (通知+飞书)',
                       style: TextStyle(
                           color: AppColors.mintDeep,
                           fontSize: 13,
@@ -396,177 +367,124 @@ class _Chip extends StatelessWidget {
   }
 }
 
-/// 提醒生效时段
-class _TimeRangeModule extends StatelessWidget {
+/// 免打扰设置 - 浮空展开界面(点击免打扰按钮才显示午休/夜间选项)
+class _DndModule extends StatefulWidget {
+  @override
+  State<_DndModule> createState() => _DndModuleState();
+}
+
+class _DndModuleState extends State<_DndModule> {
+  bool _expanded = false;
+
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    return Column(
-      children: [
-        const SectionTitle('提醒生效时段'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: CreamCard(
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    _timePicker(context, '开始', s.rangeStart,
-                        (v) => s.setRange(v, s.rangeEnd)),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Text('至',
-                          style: TextStyle(color: AppColors.textSecondary)),
-                    ),
-                    _timePicker(context, '结束', s.rangeEnd,
-                        (v) => s.setRange(s.rangeStart, v)),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('重复周期',
-                      style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600)),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: RepeatCycle.values.map((r) {
-                    final labels = {
-                      RepeatCycle.daily: '每天',
-                      RepeatCycle.weekday: '工作日',
-                      RepeatCycle.weekend: '周末'
-                    };
-                    final selected = s.repeat == r;
-                    return Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: _Chip(
-                          label: labels[r]!,
-                          selected: selected,
-                          onTap: () => s.setRepeat(r),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 12),
-                RippleButton(
-                  onTap: () {
-                    s.applyScheduleFromProfile();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text(
-                              '已按作息 ${s.profile.wakeTime}-${s.profile.bedTime} 填充')),
-                    );
-                  },
-                  borderRadius: AppThemeRadius.s,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    decoration: BoxDecoration(
-                      color: AppColors.mint,
-                      borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Text('智能作息填充',
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: CreamCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 免打扰按钮(点击展开/收起)
+            RippleButton(
+              onTap: () => setState(() => _expanded = !_expanded),
+              borderRadius: AppThemeRadius.s,
+              child: Row(
+                children: [
+                  const Icon(Icons.do_not_disturb_on_outlined,
+                      size: 20, color: AppColors.softBlueDeep),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('免打扰',
                         style: TextStyle(
-                            color: AppColors.mintDeep,
-                            fontSize: 13,
+                            color: AppColors.textPrimary,
+                            fontSize: 15,
                             fontWeight: FontWeight.w600)),
                   ),
-                ),
-              ],
+                  // 当前已启用的免打扰项简要状态
+                  Text(
+                    _statusSummary(s),
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                  const SizedBox(width: 6),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.chevron_right,
+                        size: 18, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _timePicker(BuildContext context, String label, String value,
-      ValueChanged<String> onPick) {
-    return Expanded(
-      child: RippleButton(
-        onTap: () async {
-          final t = await AppDialogs.pickTime(context, initial: value);
-          if (t != null) {
-            onPick(
-                '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}');
-          }
-        },
-        borderRadius: AppThemeRadius.s,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.paused,
-            borderRadius: BorderRadius.circular(AppThemeRadius.s),
-          ),
-          alignment: Alignment.center,
-          child: Column(
-            children: [
-              Text(label,
-                  style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 11)),
-              const SizedBox(height: 2),
-              Text(value,
-                  style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700)),
-            ],
-          ),
+            // 浮空展开内容
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              child: _expanded
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.cream,
+                          borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(8),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            // 午休免打扰
+                            _dndRow(
+                              icon: Icons.free_breakfast_outlined,
+                              title: '午休免打扰',
+                              timeRange: '12:30 ~ 14:30',
+                              value: s.noonDnd,
+                              onChanged: s.setNoonDnd,
+                              activeColor: AppColors.softBlueDeep,
+                            ),
+                            const Divider(height: 1),
+                            // 夜间免打扰
+                            _dndRow(
+                              icon: Icons.nightlight_round_outlined,
+                              title: '夜间免打扰',
+                              timeRange: '22:00 ~ 次日 08:00',
+                              value: s.nightDnd,
+                              onChanged: s.setNightDnd,
+                              activeColor: AppColors.mintDeep,
+                            ),
+                            const SizedBox(height: 6),
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                  '免打扰时段内,闹钟仍正常触发但会静音(通知栏可见)',
+                                  style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 11)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
         ),
       ),
     );
   }
-}
 
-/// 免打扰设置 - 午休/夜间开关 + 时间段说明
-class _DndModule extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    return Column(
-      children: [
-        const SectionTitle('免打扰'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: CreamCard(
-            child: Column(
-              children: [
-                // 午休免打扰
-                _dndRow(
-                  icon: Icons.free_breakfast_outlined,
-                  title: '午休免打扰',
-                  timeRange: '12:30 ~ 14:30',
-                  value: s.noonDnd,
-                  onChanged: s.setNoonDnd,
-                  activeColor: AppColors.softBlueDeep,
-                ),
-                const Divider(height: 1),
-                // 夜间免打扰
-                _dndRow(
-                  icon: Icons.nightlight_round_outlined,
-                  title: '夜间免打扰',
-                  timeRange: '22:00 ~ 次日 07:00',
-                  value: s.nightDnd,
-                  onChanged: s.setNightDnd,
-                  activeColor: AppColors.mintDeep,
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20),
-          child: Text('免打扰时段内,闹钟仍正常触发但会静音(通知栏可见)',
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-        ),
-      ],
-    );
+  /// 当前已启用的免打扰简要状态
+  String _statusSummary(AppState s) {
+    final list = <String>[];
+    if (s.noonDnd) list.add('午休');
+    if (s.nightDnd) list.add('夜间');
+    return list.isEmpty ? '未启用' : list.join('、');
   }
 
   Widget _dndRow({
@@ -609,100 +527,8 @@ class _DndModule extends StatelessWidget {
   }
 }
 
-/// 扬声器 & 治愈音效设置 - 顶部扬声器总开关 + 音效切换
-class _EarphoneModule extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    return Column(
-      children: [
-        const SectionTitle('扬声器 & 治愈音效'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: CreamCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 扬声器提醒总开关(用户可自行关闭)
-                Row(
-                  children: [
-                    const Icon(Icons.volume_up_outlined,
-                        size: 20, color: AppColors.softBlueDeep),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('扬声器提醒',
-                              style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600)),
-                          Text('关闭后仅显示通知,不播放音效',
-                              style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 11)),
-                        ],
-                      ),
-                    ),
-                    Switch(
-                      value: s.speakerEnabled,
-                      onChanged: s.setSpeakerEnabled,
-                    ),
-                  ],
-                ),
-                const Divider(height: 24),
-                const Row(
-                  children: [
-                    Icon(Icons.music_note_rounded,
-                        size: 20, color: AppColors.softBlueDeep),
-                    SizedBox(width: 10),
-                    Expanded(
-                      child: Text('提醒音效',
-                          style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
-                  children: SoundType.values.map((sd) {
-                    final selected = s.sound == sd;
-                    return _Chip(
-                      label: sd.label,
-                      selected: selected,
-                      onTap: s.speakerEnabled
-                          ? () {
-                              s.setSound(sd);
-                              AudioService.playSound(sd,
-                                  volume: s.earphoneVolume);
-                            }
-                          : null,
-                    );
-                  }).toList(),
-                ),
-                if (!s.speakerEnabled)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 10),
-                    child: Text('扬声器已关闭,音效切换暂不可用',
-                        style: TextStyle(
-                            color: AppColors.textSecondary, fontSize: 11)),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 日历 & 闹钟批量操作模块
-/// 用户可将提醒时间批量添加到手机日历和闹钟,支持一键清除
+/// 日历批量操作模块
+/// 用户可将提醒时间批量添加到手机日历,支持一键清除
 class _CalendarAlarmModule extends StatefulWidget {
   @override
   State<_CalendarAlarmModule> createState() => _CalendarAlarmModuleState();
@@ -710,7 +536,6 @@ class _CalendarAlarmModule extends StatefulWidget {
 
 class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
   List<CalendarEventRef> _calendarRefs = [];
-  List<AlarmTimeRecord> _alarmTimes = [];
   List<DateTime> _reminderTimes = [];
   bool _loading = false;
 
@@ -724,7 +549,6 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
     final s = context.read<AppState>();
     setState(() {
       _calendarRefs = StorageService.loadCalendarEventIds();
-      _alarmTimes = StorageService.loadAlarmTimes();
       _reminderTimes = CalendarAlarmService.generateReminderTimes(
         wakeTime: s.profile.wakeTime,
         bedTime: s.profile.bedTime,
@@ -776,39 +600,11 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
     }
   }
 
-  /// 添加闹钟(打开底部弹窗,用户逐个添加)
-  void _batchAddAlarms() {
-    if (_reminderTimes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('今日剩余提醒时间为空,请检查作息设置')),
-      );
-      return;
-    }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.cream,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _AlarmAddSheet(
-        times: _reminderTimes,
-        alreadyAdded: _alarmTimes,
-        onAllDone: (added) async {
-          await StorageService.saveAlarmTimes(added);
-          if (mounted) {
-            setState(() => _alarmTimes = added);
-          }
-        },
-      ),
-    );
-  }
-
-  /// 一键清除上次添加的日历和闹钟
+  /// 一键清除上次添加的日历事件
   void _clearAll() {
-    if (_calendarRefs.isEmpty && _alarmTimes.isEmpty) {
+    if (_calendarRefs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有已添加的日历事件或闹钟记录')),
+        const SnackBar(content: Text('没有已添加的日历事件')),
       );
       return;
     }
@@ -816,9 +612,7 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
     AppDialogs.confirm(
       context,
       title: '一键清除',
-      content: '将删除 ${_calendarRefs.length} 个日历事件'
-          '${_alarmTimes.isNotEmpty ? '并打开时钟App引导删除 ${_alarmTimes.length} 个闹钟' : ''}'
-          '。是否继续?',
+      content: '将删除 ${_calendarRefs.length} 个日历事件。是否继续?',
       confirmText: '清除',
       onConfirm: () => _performClear(),
     );
@@ -828,46 +622,21 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
   Future<void> _performClear() async {
     setState(() => _loading = true);
 
-    // 先保存需要显示的信息(清除前)
-    final alarmCount = _alarmTimes.length;
-    final alarmListStr = _alarmTimes.map((a) => a.timeStr).join('、');
-
     int deletedCalendar = 0;
-    // 1. 删除日历事件
     if (_calendarRefs.isNotEmpty) {
       deletedCalendar =
           await CalendarAlarmService.clearCalendarEvents(_calendarRefs);
       await StorageService.saveCalendarEventIds([]);
     }
 
-    // 2. 清除闹钟追踪记录(闹钟本身需用户手动删除)
-    await StorageService.saveAlarmTimes([]);
-
     if (mounted) {
       setState(() {
         _calendarRefs = [];
-        _alarmTimes = [];
         _loading = false;
       });
-
-      // 3. 如果有闹钟,打开时钟App引导用户手动删除
-      if (alarmCount > 0) {
-        AppDialogs.confirm(
-          context,
-          title: '请手动删除闹钟',
-          content: '已删除 $deletedCalendar 个日历事件。\n'
-              '由于系统限制,闹钟需手动删除。以下 $alarmCount 个闹钟需要删除:\n$alarmListStr\n\n'
-              '点击「去删除」打开时钟App。',
-          confirmText: '去删除',
-          onConfirm: () async {
-            await CalendarAlarmService.openAlarmApp();
-          },
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已删除 $deletedCalendar 个日历事件')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已删除 $deletedCalendar 个日历事件')),
+      );
     }
   }
 
@@ -875,7 +644,7 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const SectionTitle('日历 & 闹钟'),
+        const SectionTitle('日历'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: CreamCard(
@@ -889,7 +658,7 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
                         size: 16, color: AppColors.softBlueDeep),
                     SizedBox(width: 6),
                     Expanded(
-                      child: Text('将提醒时间批量添加到手机日历和闹钟',
+                      child: Text('将提醒时间批量添加到手机日历',
                           style: TextStyle(
                               color: AppColors.textSecondary, fontSize: 12)),
                     ),
@@ -975,42 +744,8 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
                   ),
                 ),
 
-                const SizedBox(height: 8),
-
-                // 添加闹钟按钮
-                SizedBox(
-                  width: double.infinity,
-                  child: RippleButton(
-                    onTap: _batchAddAlarms,
-                    borderRadius: AppThemeRadius.s,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.softBlue,
-                        borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.alarm_add_outlined,
-                              size: 16, color: AppColors.softBlueDeep),
-                          const SizedBox(width: 6),
-                          Text(
-                            '添加闹钟提醒 ${_alarmTimes.isNotEmpty ? "(已添加${_alarmTimes.length}个)" : ""}',
-                            style: const TextStyle(
-                                color: AppColors.softBlueDeep,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
                 // 一键清除按钮
-                if (_calendarRefs.isNotEmpty || _alarmTimes.isNotEmpty) ...[
+                if (_calendarRefs.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,
@@ -1033,7 +768,7 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
                             Icon(Icons.delete_outline,
                                 size: 16, color: AppColors.textSecondary),
                             SizedBox(width: 6),
-                            Text('一键清除上次添加的日历和闹钟',
+                            Text('一键清除上次添加的日历事件',
                                 style: TextStyle(
                                     color: AppColors.textSecondary,
                                     fontSize: 13,
@@ -1053,216 +788,155 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
   }
 }
 
-/// 闹钟添加底部弹窗 - 用户逐个添加闹钟到系统时钟App
-class _AlarmAddSheet extends StatefulWidget {
-  final List<DateTime> times;
-  final List<AlarmTimeRecord> alreadyAdded;
-  final Future<void> Function(List<AlarmTimeRecord>) onAllDone;
-
-  const _AlarmAddSheet({
-    required this.times,
-    required this.alreadyAdded,
-    required this.onAllDone,
-  });
+/// 今日记录 - 浮空展开按钮(收起显示记录数,展开显示完整列表)
+class _TodayRecordExpandable extends StatefulWidget {
+  const _TodayRecordExpandable();
 
   @override
-  State<_AlarmAddSheet> createState() => _AlarmAddSheetState();
+  State<_TodayRecordExpandable> createState() => _TodayRecordExpandableState();
 }
 
-class _AlarmAddSheetState extends State<_AlarmAddSheet> {
-  late Set<int> _addedIndices;
-
-  @override
-  void initState() {
-    super.initState();
-    // 标记已添加的时间(通过小时+分钟匹配)
-    _addedIndices = {};
-    for (var i = 0; i < widget.times.length; i++) {
-      final t = widget.times[i];
-      for (final a in widget.alreadyAdded) {
-        if (a.hour == t.hour && a.minute == t.minute) {
-          _addedIndices.add(i);
-          break;
-        }
-      }
-    }
-  }
-
-  Future<void> _addAlarm(int index) async {
-    final t = widget.times[index];
-    final ok = await CalendarAlarmService.setAlarm(
-      hour: t.hour,
-      minute: t.minute,
-      label: '喝水提醒',
-    );
-    if (ok && mounted) {
-      setState(() {
-        _addedIndices.add(index);
-      });
-      // 更新存储
-      final records = <AlarmTimeRecord>[];
-      for (var i = 0; i < widget.times.length; i++) {
-        if (_addedIndices.contains(i)) {
-          final time = widget.times[i];
-          records.add(AlarmTimeRecord(
-            hour: time.hour,
-            minute: time.minute,
-          ));
-        }
-      }
-      // 合并已添加的旧记录
-      for (final old in widget.alreadyAdded) {
-        final exists = records.any(
-            (r) => r.hour == old.hour && r.minute == old.minute);
-        if (!exists) {
-          records.add(old);
-        }
-      }
-      await widget.onAllDone(records);
-    }
-  }
+class _TodayRecordExpandableState extends State<_TodayRecordExpandable> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    final remaining =
-        widget.times.length - _addedIndices.length;
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+    final s = context.watch<AppState>();
+    final count = s.records.length;
+    final totalMl = s.todayTotal;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: CreamCard(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 标题
-            Row(
+            // 标题行(点击展开/收起)
+            RippleButton(
+              onTap: () => setState(() => _expanded = !_expanded),
+              borderRadius: AppThemeRadius.s,
+              child: Row(
+                children: [
+                  const Icon(Icons.history_rounded,
+                      size: 20, color: AppColors.softBlueDeep),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('今日记录',
+                        style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  Text(
+                    count == 0 ? '暂无记录' : '$count 条 · ${totalMl}ml',
+                    style: const TextStyle(
+                        color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                  const SizedBox(width: 6),
+                  AnimatedRotation(
+                    turns: _expanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.chevron_right,
+                        size: 18, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            // 浮空展开内容
+            AnimatedSize(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeInOut,
+              child: _expanded
+                  ? Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: AppColors.cream,
+                          borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withAlpha(8),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: count == 0
+                            ? const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: Text('还没有记录,喝口水开始吧~',
+                                      style: TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 13)),
+                                ),
+                              )
+                            : Column(
+                                children: s.records
+                                    .map((r) => _recordItem(context, r, s))
+                                    .toList(),
+                              ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _recordItem(BuildContext context, WaterRecord r, AppState s) {
+    final time =
+        '${r.time.hour.toString().padLeft(2, '0')}:${r.time.minute.toString().padLeft(2, '0')}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: const BoxDecoration(
+                color: AppColors.softBlue, shape: BoxShape.circle),
+            child: const Icon(Icons.water_drop,
+                size: 16, color: AppColors.softBlueDeep),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.alarm_add_outlined,
-                    size: 20, color: AppColors.softBlueDeep),
-                const SizedBox(width: 8),
-                const Text('添加闹钟提醒',
-                    style: TextStyle(
+                Text(time,
+                    style: const TextStyle(
                         color: AppColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700)),
-                const Spacer(),
-                Text('$remaining / ${widget.times.length} 待添加',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+                Text('${r.amount} ml',
                     style: const TextStyle(
                         color: AppColors.textSecondary, fontSize: 12)),
               ],
             ),
-            const SizedBox(height: 8),
-            const Text(
-                '点击时间添加闹钟到系统时钟App。每个闹钟会在时钟App中打开确认页面,保存后返回继续添加下一个。',
-                style: TextStyle(
-                    color: AppColors.textSecondary, fontSize: 12)),
-            const SizedBox(height: 16),
-
-            // 时间列表
-            ...widget.times.asMap().entries.map((entry) {
-              final i = entry.key;
-              final t = entry.value;
-              final added = _addedIndices.contains(i);
-              final timeStr =
-                  '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: RippleButton(
-                  onTap: added ? null : () => _addAlarm(i),
-                  borderRadius: AppThemeRadius.s,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: added ? AppColors.mint : AppColors.paused,
-                      borderRadius:
-                          BorderRadius.circular(AppThemeRadius.s),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          added ? Icons.check_circle : Icons.alarm,
-                          size: 18,
-                          color: added
-                              ? AppColors.mintDeep
-                              : AppColors.softBlueDeep,
-                        ),
-                        const SizedBox(width: 10),
-                        Text(timeStr,
-                            style: TextStyle(
-                              color: added
-                                  ? AppColors.mintDeep
-                                  : AppColors.textPrimary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            )),
-                        const Spacer(),
-                        Text(
-                          added ? '已添加' : '点击添加',
-                          style: TextStyle(
-                            color: added
-                                ? AppColors.mintDeep
-                                : AppColors.textSecondary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            }),
-
-            const SizedBox(height: 8),
-
-            // 全部添加完成提示
-            if (remaining == 0)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.mint,
-                  borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.check_circle_outline,
-                        size: 18, color: AppColors.mintDeep),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text('所有闹钟已添加完成!',
-                          style: TextStyle(
-                              color: AppColors.mintDeep,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                  ],
-                ),
-              ),
-
-            // 关闭按钮
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: RippleButton(
-                onTap: () => Navigator.of(context).pop(),
-                borderRadius: AppThemeRadius.s,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.softBlueDeep,
-                    borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text('完成',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600)),
-                ),
-              ),
+          ),
+          RippleButton(
+            onTap: () => AppDialogs.confirm(
+              context,
+              title: '删除记录?',
+              content: '将移除 $time 的 ${r.amount}ml 记录',
+              onConfirm: () {
+                s.removeRecord(r.id);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('记录已删除')),
+                );
+              },
+              confirmText: '删除',
             ),
-          ],
-        ),
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.delete_outline,
+                  size: 16, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
       ),
     );
   }
