@@ -1559,8 +1559,6 @@ class _CalorieDialCard extends StatelessWidget {
     final bmr = s.profile.bmr ?? 0;
     // 消耗侧 = 运动消耗 + BMR(基础代谢也是消耗的一部分)
     final consume = s.todayExerciseCalories + bmr;
-    // 表盘满量程:取摄入/消耗/2000 的最大值,保证弧线可见
-    final maxScale = [intake, consume, 2000].fold<int>(0, math.max).toDouble();
 
     // 目标缺口:日消耗 < 建议日消耗时,显示还差多少 kcal
     final showGap = dailyBurn != null &&
@@ -1602,7 +1600,6 @@ class _CalorieDialCard extends StatelessWidget {
                     painter: _DialPainter(
                       intake: intake.toDouble(),
                       consume: consume.toDouble(),
-                      maxScale: maxScale,
                     ),
                   ),
                   // 中心数值
@@ -1727,15 +1724,14 @@ class _CalorieDialCard extends StatelessWidget {
   }
 }
 
-/// 热量表盘画板:上半圆,左红(摄入)右绿(消耗)
+/// 热量表盘画板:上半圆,红(摄入)和绿(消耗)按比例分割整个180度半圆
+/// 摄入越多红色弧越大,消耗越多绿色弧越大,两者此消彼长
 class _DialPainter extends CustomPainter {
   final double intake;
   final double consume;
-  final double maxScale;
   _DialPainter({
     required this.intake,
     required this.consume,
-    required this.maxScale,
   });
 
   @override
@@ -1748,6 +1744,7 @@ class _DialPainter extends CustomPainter {
 
     final rect = Rect.fromCircle(center: center, radius: radius);
     const strokeWidth = 18.0;
+    const halfCircle = math.pi; // 180度
 
     // 背景轨道:上半圆(从 9 点经 12 点到 3 点)
     final bgPaint = Paint()
@@ -1755,51 +1752,38 @@ class _DialPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round;
-    canvas.drawArc(rect, math.pi, math.pi, false, bgPaint);
+    canvas.drawArc(rect, math.pi, halfCircle, false, bgPaint);
 
-    // 左半弧(红,摄入):从 9 点向 12 点生长
-    final intakeFrac =
-        maxScale > 0 ? (intake / maxScale).clamp(0.0, 1.0) : 0.0;
+    // 按摄入/消耗比例分割180度(两者都为0时各占90度)
+    final total = intake + consume;
+    final intakeFrac = total > 0 ? intake / total : 0.5;
+    final consumeFrac = total > 0 ? consume / total : 0.5;
+
+    // 红色弧(摄入):从 9 点(π)顺时针生长,角度 = π * intakeFrac
     if (intakeFrac > 0) {
       final redPaint = Paint()
         ..color = const Color(0xFFE57373)
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round;
-      canvas.drawArc(rect, math.pi, (math.pi / 2) * intakeFrac, false, redPaint);
+      canvas.drawArc(rect, math.pi, halfCircle * intakeFrac, false, redPaint);
     }
 
-    // 右半弧(绿,消耗):从 3 点向 12 点生长
-    final consumeFrac =
-        maxScale > 0 ? (consume / maxScale).clamp(0.0, 1.0) : 0.0;
+    // 绿色弧(消耗):从 3 点(2π)逆时针生长,即从 2π - π*consumeFrac 开始
     if (consumeFrac > 0) {
       final greenPaint = Paint()
         ..color = const Color(0xFF66BB6A)
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth
         ..strokeCap = StrokeCap.round;
-      // start = 2π - π/2*frac, sweep = π/2*frac(顺时针)
-      final start = 2 * math.pi - (math.pi / 2) * consumeFrac;
-      canvas.drawArc(rect, start, (math.pi / 2) * consumeFrac, false, greenPaint);
+      final start = 2 * math.pi - halfCircle * consumeFrac;
+      canvas.drawArc(rect, start, halfCircle * consumeFrac, false, greenPaint);
     }
-
-    // 中央分隔刻度(12 点位置小竖线)
-    final tickPaint = Paint()
-      ..color = AppColors.textSecondary
-      ..strokeWidth = 2
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      Offset(center.dx, center.dy - radius - 4),
-      Offset(center.dx, center.dy - radius - 14),
-      tickPaint,
-    );
   }
 
   @override
   bool shouldRepaint(covariant _DialPainter old) =>
-      old.intake != intake ||
-      old.consume != consume ||
-      old.maxScale != maxScale;
+      old.intake != intake || old.consume != consume;
 }
 
 /// 摄入不足提示卡片
@@ -2485,6 +2469,12 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
   List<FoodIngredient> _ingredients = [];
   bool _lookingUp = false;
   bool _confirmed = false;
+  // 用户手动编辑的每100g营养(覆盖基于食材计算的结果)
+  FoodNutrition? _overrideNutrition;
+  // 当前食材是否来自已保存的配方(命中则不再询问是否保存)
+  bool _usedSavedRecipe = false;
+  // 用户输入的原始菜名(单菜名时用于保存配方)
+  String _dishName = '';
 
   @override
   void initState() {
@@ -2507,8 +2497,9 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
   /// 占比合计百分比(显示用)
   int get ratioSumPercent => (_ratioSum * 100).round();
 
-  /// 实时计算的每100g热量(基于当前食材列表+占比,占比归一化)
+  /// 实时计算的每100g热量(优先用户覆盖值,否则基于食材列表+占比归一化)
   double get _kcalPer100g {
+    if (_overrideNutrition != null) return _overrideNutrition!.energy;
     final sum = _ratioSum;
     if (sum <= 0) return 0;
     double total = 0;
@@ -2526,6 +2517,16 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
 
   ({double protein, double fat, double carbs, double fiber})
       get _nutrition {
+    // 用户已编辑过营养:直接按克数线性缩放
+    if (_overrideNutrition != null) {
+      final scaled = _overrideNutrition!.scaled(_amount);
+      return (
+        protein: scaled.protein,
+        fat: scaled.fat,
+        carbs: scaled.carbs,
+        fiber: scaled.fiber,
+      );
+    }
     final sum = _ratioSum;
     if (sum <= 0) return (protein: 0, fat: 0, carbs: 0, fiber: 0);
     double p = 0, f = 0, c = 0, fi = 0;
@@ -2544,11 +2545,13 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
   }
 
   /// 更新某食材占比(用户手动编辑)
+  /// 修改占比后清除手动覆盖的营养值,让热量随占比重新计算
   void _updateRatio(int index, double ratio) {
     setState(() {
       final clamped = ratio.clamp(0.0, 1.0);
       _ingredients[index] =
           FoodIngredient(name: _ingredients[index].name, ratio: clamped);
+      _overrideNutrition = null;
     });
   }
 
@@ -2587,17 +2590,29 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
 
     final ingredients = <FoodIngredient>[];
     int aiRecognized = 0;
+    bool usedSavedRecipe = false;
 
-    if (!isMulti && AiService.hasApiKey) {
-      // 单菜名:先调用 AI 识别菜品中的食材及占比
-      debugPrint('[ManualFood] 单菜名输入,调用 AI 识别食材: $text');
-      final aiIngredients =
-          await AiService.recognizeIngredientsFromDish(text);
-      if (aiIngredients != null && aiIngredients.isNotEmpty) {
-        ingredients.addAll(aiIngredients);
-        aiRecognized = aiIngredients.length;
+    if (!isMulti) {
+      // 单菜名:优先查找用户保存的配方(永久记录的食材占比)
+      final saved = StorageService.lookupDishRecipe(text);
+      if (saved != null && saved.isNotEmpty) {
+        debugPrint('[ManualFood] 命中保存的菜品配方: $text -> ${saved.length} 个食材');
+        ingredients.addAll(saved);
+        usedSavedRecipe = true;
+      } else if (AiService.hasApiKey) {
+        // 无保存配方,调用 AI 识别菜品中的食材及占比
+        debugPrint('[ManualFood] 单菜名输入,调用 AI 识别食材: $text');
+        final aiIngredients =
+            await AiService.recognizeIngredientsFromDish(text);
+        if (aiIngredients != null && aiIngredients.isNotEmpty) {
+          ingredients.addAll(aiIngredients);
+          aiRecognized = aiIngredients.length;
+        } else {
+          // AI 失败,按单一食材处理
+          ingredients.add(FoodIngredient(name: text, ratio: 1.0));
+        }
       } else {
-        // AI 失败,按单一食材处理
+        // 无 API Key,按单一食材处理
         ingredients.add(FoodIngredient(name: text, ratio: 1.0));
       }
     } else {
@@ -2630,11 +2645,15 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
       _ingredients = ingredients;
       _confirmed = true;
       _lookingUp = false;
+      _usedSavedRecipe = usedSavedRecipe;
+      _dishName = isMulti ? '' : text;
     });
 
     final total = ingredients.length;
     String msg;
-    if (aiRecognized > 0 && isMulti == false) {
+    if (usedSavedRecipe) {
+      msg = '已使用保存的配方($total 个食材),可手动调整';
+    } else if (aiRecognized > 0 && isMulti == false) {
       msg = 'AI 识别出 $aiRecognized 个食材及占比,可手动调整';
     } else if (matched == total) {
       msg = '已识别 $matched 个食材,营养已计算';
@@ -2653,13 +2672,23 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
     });
   }
 
-  void _confirm(BuildContext context) {
+  Future<void> _confirm(BuildContext context) async {
     if (!_confirmed || _ingredients.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请先输入食材并点击「查询营养」')),
       );
       return;
     }
+
+    // 单菜名且非已保存配方且含多个食材时,询问是否永久保存配方
+    bool saveRecipe = false;
+    if (_dishName.isNotEmpty &&
+        !_usedSavedRecipe &&
+        _ingredients.length >= 2) {
+      saveRecipe = await _showSaveRecipeDialog(context);
+      if (!context.mounted) return;
+    }
+
     final s = context.read<AppState>();
     final amount = _amount.round();
     final nut = _nutrition;
@@ -2675,12 +2704,45 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
       carbs: nut.carbs,
       fiber: nut.fiber,
     ));
+
+    // 永久保存配方
+    if (saveRecipe) {
+      await StorageService.saveDishRecipe(_dishName, _ingredients);
+    }
+
+    if (!context.mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-          content:
-              Text('已记录 $name ${amount}g $_totalCalories kcal')),
+          content: Text(saveRecipe
+              ? '已记录 $name ${amount}g $_totalCalories kcal,配方已保存'
+              : '已记录 $name ${amount}g $_totalCalories kcal')),
     );
+  }
+
+  /// 询问用户是否永久保存菜品配方
+  Future<bool> _showSaveRecipeDialog(BuildContext context) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('保存菜品配方?',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            content: Text(
+                '是否将「$_dishName」的食材占比永久保存?\n保存后下次输入相同菜名将直接使用此配方。',
+                style: const TextStyle(fontSize: 13)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('仅本次使用'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('永久保存'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 
   @override
@@ -2841,11 +2903,98 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
                         }).toList(),
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        '${_kcalPer100g.toStringAsFixed(0)} kcal / 100g',
-                        style: const TextStyle(
-                            color: AppColors.textSecondary, fontSize: 12),
+                      // 每100g营养:点击可手动修改(覆盖基于食材计算的结果)
+                      RippleButton(
+                        onTap: () async {
+                          final dishName = _ingredients.map((e) => e.name).join('+');
+                          final edited = await showModalBottomSheet<FoodNutrition>(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (ctx) => _EditNutritionSheet(
+                              name: dishName,
+                              initial: _overrideNutrition ??
+                                  FoodNutrition(
+                                    name: dishName,
+                                    energy: _kcalPer100g,
+                                    protein: _nutrition.protein / (_amount / 100).clamp(0.01, 999),
+                                    fat: _nutrition.fat / (_amount / 100).clamp(0.01, 999),
+                                    carbs: _nutrition.carbs / (_amount / 100).clamp(0.01, 999),
+                                    fiber: _nutrition.fiber / (_amount / 100).clamp(0.01, 999),
+                                  ),
+                            ),
+                          );
+                          if (edited != null) {
+                            FoodNutritionDB.addCustom(edited);
+                            await StorageService.saveCustomFoodNutrition();
+                            setState(() {
+                              _overrideNutrition = edited;
+                            });
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(
+                                  '已更新「${edited.name}」每100g营养数据,并保存到本地数据库')),
+                            );
+                          }
+                        },
+                        borderRadius: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _overrideNutrition != null
+                                ? const Color(0xFFFFF0E0)
+                                : AppColors.cream,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _overrideNutrition != null
+                                  ? const Color(0xFFCC7A00).withAlpha(80)
+                                  : AppColors.divider,
+                              width: 0.5,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.edit_note,
+                                size: 14,
+                                color: _overrideNutrition != null
+                                    ? const Color(0xFFCC7A00)
+                                    : AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _overrideNutrition != null
+                                    ? '${_overrideNutrition!.energy.toStringAsFixed(0)} kcal/100g (已修改,点击编辑)'
+                                    : '${_kcalPer100g.toStringAsFixed(0)} kcal / 100g (点击修改)',
+                                style: TextStyle(
+                                  color: _overrideNutrition != null
+                                      ? const Color(0xFFCC7A00)
+                                      : AppColors.textSecondary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
+                      if (_overrideNutrition != null) ...[
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Text(
+                            '蛋白${_overrideNutrition!.protein.toStringAsFixed(1)}g '
+                            '脂肪${_overrideNutrition!.fat.toStringAsFixed(1)}g '
+                            '碳水${_overrideNutrition!.carbs.toStringAsFixed(1)}g '
+                            '纤维${_overrideNutrition!.fiber.toStringAsFixed(1)}g (每100g)',
+                            style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 10),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       // 摄入量输入 + 滑块
                       Row(

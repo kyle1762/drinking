@@ -18,11 +18,13 @@ class CalendarAlarmService {
   /// [wakeTime] 起床时间 "HH:mm"
   /// [bedTime] 睡觉时间 "HH:mm"
   /// [intervalMinutes] 间隔分钟
-  /// 返回今日的 DateTime 列表(跳过已过去的时间)
+  /// [skipPast] 是否跳过已过去的时间(默认 true,用于闹钟;日历设为 false 因为每日重复)
+  /// 返回今日的 DateTime 列表
   static List<DateTime> generateReminderTimes({
     required String wakeTime,
     required String bedTime,
     required int intervalMinutes,
+    bool skipPast = true,
   }) {
     final now = DateTime.now();
     final wake = _parseTime(now, wakeTime);
@@ -35,8 +37,9 @@ class CalendarAlarmService {
     final times = <DateTime>[];
     var current = wake;
     while (current.isBefore(bed)) {
-      // 只添加今天还没过去的时间
-      if (current.isAfter(now)) {
+      // skipPast=true 时只添加今天还没过去的时间(用于闹钟)
+      // skipPast=false 时添加所有时间点(用于日历,因为每日重复)
+      if (!skipPast || current.isAfter(now)) {
         times.add(current);
       }
       current = current.add(Duration(minutes: intervalMinutes));

@@ -559,9 +559,17 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
 
   /// 批量添加日历事件
   Future<void> _batchAddCalendar() async {
-    if (_reminderTimes.isEmpty) {
+    final s = context.read<AppState>();
+    // 日历事件为每日重复,需包含全天所有时间点(不跳过已过去的时间)
+    final allTimes = CalendarAlarmService.generateReminderTimes(
+      wakeTime: s.profile.wakeTime,
+      bedTime: s.profile.bedTime,
+      intervalMinutes: s.loopInterval,
+      skipPast: false,
+    );
+    if (allTimes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('今日剩余提醒时间为空,请检查作息设置')),
+        const SnackBar(content: Text('提醒时间为空,请检查作息设置')),
       );
       return;
     }
@@ -573,7 +581,7 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
       }
       final refs = await CalendarAlarmService.batchAddCalendarEvents(
         title: '喝水提醒',
-        times: _reminderTimes,
+        times: allTimes,
       );
       await StorageService.saveCalendarEventIds(refs);
       if (mounted) {

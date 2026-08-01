@@ -739,11 +739,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 检查是否需要记录周末周报(周六或周日触发,每天最多一次)
+  /// 检查是否需要记录周末周报(仅周日触发,每天最多一次)
   void _checkWeeklyRecord() {
     final now = DateTime.now();
-    // 仅在周六(6)或周日(7)触发
-    if (now.weekday != DateTime.saturday && now.weekday != DateTime.sunday) {
+    // 仅在周日(7)触发
+    if (now.weekday != DateTime.sunday) {
       return;
     }
     // 当天已记录则跳过

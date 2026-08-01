@@ -68,6 +68,42 @@ class StorageService {
   static const _kDailyDietSummaries = 'dailyDietSummaries';
   // 当前 AI 饮食建议(含建议摄入量,可被动态调整)
   static const _kDietAdvice = 'dietAdvice';
+  // 用户保存的菜品配方(菜名 -> 食材及占比列表,永久记录供下次直接使用)
+  static const _kDishRecipes = 'dishRecipes';
+
+  // ============ 菜品配方(永久保存的食材占比) ============
+
+  /// 保存单个菜品配方(菜名 -> 食材列表),覆盖同名旧配方
+  static Future<void> saveDishRecipe(String dishName, List<FoodIngredient> ingredients) async {
+    final all = loadAllDishRecipes();
+    all[dishName] = ingredients;
+    await _p.setString(_kDishRecipes,
+        jsonEncode(all.map((k, v) => MapEntry(k, v.map((e) => e.toJson()).toList()))));
+  }
+
+  /// 加载全部菜品配方
+  static Map<String, List<FoodIngredient>> loadAllDishRecipes() {
+    final s = _p.getString(_kDishRecipes);
+    if (s == null) return {};
+    try {
+      final map = jsonDecode(s) as Map<String, dynamic>;
+      return map.map((k, v) => MapEntry(
+          k, (v as List).map((e) => FoodIngredient.fromJson(e as Map<String, dynamic>)).toList()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// 查找指定菜名的配方(模糊匹配菜名),找不到返回 null
+  static List<FoodIngredient>? lookupDishRecipe(String dishName) {
+    final all = loadAllDishRecipes();
+    // 精确匹配优先
+    if (all.containsKey(dishName)) return all[dishName];
+    // 去空格后匹配
+    final trimmed = dishName.trim();
+    if (all.containsKey(trimmed)) return all[trimmed];
+    return null;
+  }
 
   // ============ 加载全部 ============
   /// 从磁盘读取全部状态,返回一个 Map,供 AppState.bootstrap 使用
@@ -412,6 +448,7 @@ class StorageService {
       _kAlarmTimes,
       _kDailyDietSummaries,
       _kDietAdvice,
+      _kDishRecipes,
     ];
     for (final k in keys) {
       await _p.remove(k);
