@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../state/app_state.dart';
+import '../../services/ai_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
 import '../../dialogs.dart';
@@ -19,6 +20,7 @@ class AccountPage extends StatelessWidget {
           children: [
             const _IllustrationHeader(),
             const _WelcomeCard(),
+            const _ApiKeyCard(),
             _FeishuConfigCard(),
             // _FeishuBindCard 仅在已登录时显示(测试推送+退出登录)
             Selector<AppState, bool>(
@@ -905,6 +907,158 @@ class _FeishuBindCard extends StatelessWidget {
         duration: const Duration(seconds: 5),
       ),
     );
+  }
+}
+
+/// API Key 配置卡片 - 配置智谱 AI API Key 用于图片识别/饮食建议
+class _ApiKeyCard extends StatefulWidget {
+  const _ApiKeyCard();
+
+  @override
+  State<_ApiKeyCard> createState() => _ApiKeyCardState();
+}
+
+class _ApiKeyCardState extends State<_ApiKeyCard> {
+  late TextEditingController _ctrl;
+  bool _obscure = true;
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: AiService.apiKey);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final configured = AiService.hasApiKey;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: CreamCard(
+        color: configured ? AppColors.mint : AppColors.softBlue,
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  configured ? Icons.check_circle_outline : Icons.key_outlined,
+                  size: 18,
+                  color:
+                      configured ? AppColors.mintDeep : AppColors.softBlueDeep,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  configured ? 'API Key 已配置' : 'API Key 未配置',
+                  style: TextStyle(
+                    color: configured
+                        ? AppColors.mintDeep
+                        : AppColors.softBlueDeep,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                RippleButton(
+                  onTap: () => setState(() => _editing = !_editing),
+                  borderRadius: 12,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: Text(
+                      _editing ? '收起' : '修改',
+                      style: TextStyle(
+                        color: configured
+                            ? AppColors.mintDeep
+                            : AppColors.softBlueDeep,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (_editing) ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _ctrl,
+                      obscureText: _obscure,
+                      decoration: InputDecoration(
+                        hintText: '输入 API Key',
+                        isDense: true,
+                        filled: true,
+                        fillColor: AppColors.cream,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                          borderSide: BorderSide.none,
+                        ),
+                        suffixIcon: RippleButton(
+                          onTap: () => setState(() => _obscure = !_obscure),
+                          child: Icon(
+                            _obscure
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            size: 18,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  RippleButton(
+                    onTap: _saveKey,
+                    borderRadius: AppThemeRadius.s,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: configured
+                            ? AppColors.mintDeep
+                            : AppColors.softBlueDeep,
+                        borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                      ),
+                      child: const Text('保存',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text('用于AI图片识别(食物/运动/体测)和饮食建议,免费申请: open.bigmodel.cn',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _saveKey() async {
+    final key = _ctrl.text.trim();
+    await AiService.saveApiKey(key);
+    if (mounted) {
+      context.read<AppState>().refreshAiData();
+      setState(() => _editing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(key.isEmpty ? '已清除 API Key' : 'API Key 已保存')),
+      );
+    }
   }
 }
 

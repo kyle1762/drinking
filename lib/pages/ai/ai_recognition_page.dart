@@ -66,8 +66,6 @@ class _AiRecognitionPageState extends State<AiRecognitionPage> {
                 padding: const EdgeInsets.only(bottom: 120),
                 children: const [
                   SizedBox(height: 8),
-                  _ApiKeyCard(),
-                  SizedBox(height: 12),
                   _InfoCardRow(),
                   SizedBox(height: 12),
                   _IntakeWarningCard(),
@@ -106,155 +104,6 @@ class _Header extends StatelessWidget {
                 fontWeight: FontWeight.w800)),
       ),
     );
-  }
-}
-
-/// API Key 配置卡片 - 外显在页面上
-class _ApiKeyCard extends StatefulWidget {
-  const _ApiKeyCard();
-
-  @override
-  State<_ApiKeyCard> createState() => _ApiKeyCardState();
-}
-
-class _ApiKeyCardState extends State<_ApiKeyCard> {
-  late TextEditingController _ctrl;
-  bool _obscure = true;
-  bool _editing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: AiService.apiKey);
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final configured = AiService.hasApiKey;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: CreamCard(
-        color: configured ? AppColors.mint : AppColors.softBlue,
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  configured ? Icons.check_circle_outline : Icons.key_outlined,
-                  size: 18,
-                  color:
-                      configured ? AppColors.mintDeep : AppColors.softBlueDeep,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  configured ? 'API Key 已配置' : 'API Key 未配置',
-                  style: TextStyle(
-                    color: configured
-                        ? AppColors.mintDeep
-                        : AppColors.softBlueDeep,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Spacer(),
-                RippleButton(
-                  onTap: () => setState(() => _editing = !_editing),
-                  borderRadius: 12,
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: Text(
-                      _editing ? '收起' : '修改',
-                      style: TextStyle(
-                        color: configured
-                            ? AppColors.mintDeep
-                            : AppColors.softBlueDeep,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (_editing) ...[
-              const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _ctrl,
-                      obscureText: _obscure,
-                      decoration: InputDecoration(
-                        hintText: '输入 API Key',
-                        isDense: true,
-                        filled: true,
-                        fillColor: AppColors.cream,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                          borderSide: BorderSide.none,
-                        ),
-                        suffixIcon: RippleButton(
-                          onTap: () => setState(() => _obscure = !_obscure),
-                          child: Icon(
-                            _obscure
-                                ? Icons.visibility_off_outlined
-                                : Icons.visibility_outlined,
-                            size: 18,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  RippleButton(
-                    onTap: _saveKey,
-                    borderRadius: AppThemeRadius.s,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: configured
-                            ? AppColors.mintDeep
-                            : AppColors.softBlueDeep,
-                        borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                      ),
-                      child: const Text('保存',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _saveKey() async {
-    final key = _ctrl.text.trim();
-    await AiService.saveApiKey(key);
-    if (mounted) {
-      context.read<AppState>().refreshAiData();
-      setState(() => _editing = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(key.isEmpty ? '已清除 API Key' : 'API Key 已保存')),
-      );
-    }
   }
 }
 
@@ -632,23 +481,23 @@ class _DetailOverlay extends StatelessWidget {
             child: const SizedBox.expand(),
           ),
         ),
-        // 居中浮层内容
-        Center(
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.75,
-            ),
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            child: Material(
-              color: Colors.transparent,
-              elevation: 12,
-              shadowColor: AppColors.shadow,
-              borderRadius: BorderRadius.circular(24),
-              child: AnimatedPadding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.of(context).viewInsets.bottom,
-                ),
-                duration: const Duration(milliseconds: 200),
+        // 浮层内容:用 AnimatedPadding 推到键盘上方,避免输入框被遮挡
+        AnimatedPadding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          duration: const Duration(milliseconds: 200),
+          child: Center(
+            child: Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.75,
+              ),
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              child: Material(
+                color: Colors.transparent,
+                elevation: 12,
+                shadowColor: AppColors.shadow,
+                borderRadius: BorderRadius.circular(24),
                 child: Container(
                   decoration: BoxDecoration(
                     color: AppColors.cream,
@@ -707,6 +556,7 @@ class _ProfileCardState extends State<_ProfileCard> {
   // 个人形象图片(编辑期临时持有;保存时写入 UserProfile.imagePath)
   String? _imagePath;
   final ImagePicker _picker = ImagePicker();
+  bool _scanning = false; // 体测图片识别中
 
   @override
   void initState() {
@@ -745,6 +595,62 @@ class _ProfileCardState extends State<_ProfileCard> {
 
   /// 移除已选个人形象图片
   void _removeImage() => setState(() => _imagePath = null);
+
+  /// 选择体测图片并调用 AI 识别身高/体重/肌肉量
+  Future<void> _scanBodyMetrics() async {
+    if (!AiService.hasApiKey) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先在账户页配置 AI API Key')),
+      );
+      return;
+    }
+    try {
+      final xfile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+      if (xfile == null) return;
+      setState(() => _scanning = true);
+      final result = await AiService.recognizeBodyMetrics(xfile.path);
+      if (!mounted) return;
+      if (result == null) {
+        setState(() => _scanning = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('识别失败,请重试或检查图片清晰度')),
+        );
+        return;
+      }
+      setState(() {
+        _scanning = false;
+        if (result.height != null) {
+          _heightCtrl.text = result.height!.round().toString();
+        }
+        if (result.weight != null) {
+          _weightCtrl.text = result.weight!.toStringAsFixed(1);
+        }
+        if (result.muscle != null) {
+          _muscleCtrl.text = result.muscle!.toStringAsFixed(1);
+        }
+        // 自动进入编辑模式以便用户确认/修改
+        _editing = true;
+      });
+      final parts = <String>[];
+      if (result.height != null) parts.add('身高${result.height!.round()}cm');
+      if (result.weight != null) parts.add('体重${result.weight!.toStringAsFixed(1)}kg');
+      if (result.muscle != null) parts.add('肌肉量${result.muscle!.toStringAsFixed(1)}kg');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(parts.isEmpty ? '未识别到身体数据' : '已识别: ${parts.join(", ")}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _scanning = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('识别异常: $e')),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -787,6 +693,46 @@ class _ProfileCardState extends State<_ProfileCard> {
                   ),
                 ),
                 const Spacer(),
+                // 体测图片识别按钮(无需进入编辑模式即可使用)
+                RippleButton(
+                  onTap: _scanning ? null : _scanBodyMetrics,
+                  borderRadius: 12,
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: _scanning
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation(
+                                    AppColors.softBlueDeep)),
+                          )
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.document_scanner_outlined,
+                                  size: 14,
+                                  color: complete
+                                      ? AppColors.mintDeep
+                                      : AppColors.softBlueDeep),
+                              const SizedBox(width: 4),
+                              Text(
+                                '图片识别',
+                                style: TextStyle(
+                                  color: complete
+                                      ? AppColors.mintDeep
+                                      : AppColors.softBlueDeep,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 4),
                 RippleButton(
                   onTap: () => setState(() => _editing = !_editing),
                   borderRadius: 12,
@@ -3345,7 +3291,7 @@ class _ManualExerciseSheetState extends State<_ManualExerciseSheet> {
     }
     if (!AiService.hasApiKey) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('请先在上方配置 API Key')),
+        const SnackBar(content: Text('请先在账户页配置 API Key')),
       );
       return;
     }

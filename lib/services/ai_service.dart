@@ -517,6 +517,69 @@ class AiService {
 
   // ========== 饮食分析与建议 ==========
 
+  /// AI 从体测报告/体脂秤图片识别身体数据
+  /// 读取图片中的身高、体重、肌肉量等信息
+  /// 返回 ({double? height, double? weight, double? muscle}),失败返回 null
+  static Future<({double? height, double? weight, double? muscle})?>
+      recognizeBodyMetrics(String imagePath) async {
+    if (!hasApiKey) return null;
+    try {
+      final bytes = await File(imagePath).readAsBytes();
+      final base64Image = base64Encode(bytes);
+      final imageUrl = 'data:image/jpeg;base64,$base64Image';
+
+      final prompt = '请识别这张图片中的身体数据(体测报告/体脂秤屏幕/健康报告等)。'
+          '返回纯JSON格式(不要markdown标记):\n'
+          '{"height":身高cm数值,"weight":体重kg数值,"muscle":肌肉量kg数值}\n'
+          '注意:所有数值为纯数字(可为小数);若图片中某项数据无法识别,该项填0。';
+
+      final response = await http.post(
+        Uri.parse(_endpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': _model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': prompt},
+                {
+                  'type': 'image_url',
+                  'image_url': {'url': imageUrl}
+                },
+              ],
+            },
+          ],
+          'temperature': 0.1,
+          'max_tokens': 200,
+        }),
+      );
+      if (response.statusCode != 200) {
+        debugPrint('[AiService] 体测识别 API 返回 ${response.statusCode}');
+        return null;
+      }
+      final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      final choices = respData['choices'] as List;
+      if (choices.isEmpty) return null;
+      final content = choices[0]['message']['content'] as String;
+      final json = _extractJson(content);
+      final height = (json['height'] as num?)?.toDouble();
+      final weight = (json['weight'] as num?)?.toDouble();
+      final muscle = (json['muscle'] as num?)?.toDouble();
+      return (
+        height: height != null && height > 0 ? height : null,
+        weight: weight != null && weight > 0 ? weight : null,
+        muscle: muscle != null && muscle > 0 ? muscle : null,
+      );
+    } catch (e) {
+      debugPrint('[AiService] 体测识别失败: $e');
+      return null;
+    }
+  }
+
   /// AI 饮食分析:根据用户近期饮食记录 + 目标,生成个性化建议
   /// [recentSummaries] 最近 N 天的每日饮食摘要
   /// [todayFoodNames] 今天已吃的食物名称列表(供 AI 参考当前饮食)

@@ -5,8 +5,6 @@ import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
 import '../../dialogs.dart';
-import '../../services/alarm_service.dart';
-import '../../services/notification_service.dart';
 import '../../services/calendar_alarm_service.dart';
 import '../../services/storage_service.dart';
 import '../stats/stats_page.dart';
@@ -36,7 +34,6 @@ class ReminderPage extends StatelessWidget {
             _DndModule(),
             _CalendarAlarmModule(),
             const SizedBox(height: 16),
-            _BottomActions(),
           ],
         ),
       ),
@@ -250,59 +247,6 @@ class _LoopReminder extends StatelessWidget {
             const SizedBox(height: 6),
             const Text('点击 20/60 分钟快速切换,或点击 ±5 分钟微调(最小1分钟)',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-            const SizedBox(height: 16),
-            // 立即测试:直接触发通知+飞书(不经过闹钟调度)
-            SizedBox(
-              width: double.infinity,
-              child: RippleButton(
-                onTap: () async {
-                  await NotificationService.onTestAlarmFired();
-                },
-                borderRadius: AppThemeRadius.s,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.mint,
-                    borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text('立即测试提醒 (通知+飞书)',
-                      style: TextStyle(
-                          color: AppColors.mintDeep,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            // 闹钟测试:5秒后通过闹钟调度触发(验证闹钟机制)
-            SizedBox(
-              width: double.infinity,
-              child: RippleButton(
-                onTap: () async {
-                  try {
-                    final ok = await AlarmService.scheduleTest();
-                    debugPrint('[TestBtn] scheduleTest 返回: $ok');
-                  } catch (e) {
-                    debugPrint('[TestBtn] scheduleTest 异常: $e');
-                  }
-                },
-                borderRadius: AppThemeRadius.s,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.softBlue,
-                    borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text('闹钟测试 (5秒后触发)',
-                      style: TextStyle(
-                          color: AppColors.softBlueDeep,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -536,7 +480,6 @@ class _CalendarAlarmModule extends StatefulWidget {
 
 class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
   List<CalendarEventRef> _calendarRefs = [];
-  List<DateTime> _reminderTimes = [];
   bool _loading = false;
 
   @override
@@ -546,14 +489,8 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
   }
 
   void _loadData() {
-    final s = context.read<AppState>();
     setState(() {
       _calendarRefs = StorageService.loadCalendarEventIds();
-      _reminderTimes = CalendarAlarmService.generateReminderTimes(
-        wakeTime: s.profile.wakeTime,
-        bedTime: s.profile.bedTime,
-        intervalMinutes: s.loopInterval,
-      );
     });
   }
 
@@ -672,50 +609,6 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-
-                // 今日提醒时间预览
-                if (_reminderTimes.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.paused,
-                      borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '今日剩余 ${_reminderTimes.length} 个提醒时间',
-                          style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 4),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: _reminderTimes.take(8).map((t) {
-                            return Text(
-                              '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}',
-                              style: const TextStyle(
-                                  color: AppColors.softBlueDeep,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600),
-                            );
-                          }).toList(),
-                        ),
-                        if (_reminderTimes.length > 8)
-                          const Text('...',
-                              style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 12)),
-                      ],
-                    ),
-                  ),
-
                 const SizedBox(height: 12),
 
                 // 添加日历按钮
@@ -942,91 +835,6 @@ class _TodayRecordExpandableState extends State<_TodayRecordExpandable> {
               padding: EdgeInsets.all(4),
               child: Icon(Icons.delete_outline,
                   size: 16, color: AppColors.textSecondary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 底部操作 - 保存 + 暂停今日
-class _BottomActions extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: RippleButton(
-              onTap: () async {
-                final s = context.read<AppState>();
-                final ok = s.reminderEnabled && !s.reminderPaused;
-                if (ok) {
-                  // 统一入口:保存配置 + 重注册闹钟 + 同步下次提醒时间
-                  final success = await s.applyLoopInterval(s.loopInterval);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(success
-                            ? '设置已保存,下次提醒:${s.nextReminderTime}'
-                            : '设置已保存(闹钟注册失败,请检查权限)'),
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                } else {
-                  await AlarmService.cancelLoop();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('提醒已关闭/暂停,闹钟已取消'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                }
-              },
-              borderRadius: AppThemeRadius.m,
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: AppColors.softBlueDeep,
-                  borderRadius: BorderRadius.circular(AppThemeRadius.m),
-                ),
-                alignment: Alignment.center,
-                child: const Text('保存设置',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700)),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          RippleButton(
-            onTap: () async {
-              s.togglePauseToday();
-              if (s.reminderPaused) {
-                await AlarmService.cancelLoop();
-              } else {
-                // 恢复时使用统一入口,确保下次提醒时间同步刷新
-                await s.applyLoopInterval(s.loopInterval);
-              }
-            },
-            borderRadius: AppThemeRadius.m,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                color: AppColors.paused,
-                borderRadius: BorderRadius.circular(AppThemeRadius.m),
-              ),
-              child: Text(s.reminderPaused ? '恢复' : '暂停今日',
-                  style: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600)),
             ),
           ),
         ],
