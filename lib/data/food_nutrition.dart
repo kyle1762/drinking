@@ -1248,7 +1248,12 @@ class FoodNutritionDB {
 
   /// 模糊查找:支持去除常见后缀(如"芹菜(茎)" -> "芹菜")
   /// 优先查内置表,找不到再查用户自定义表,仍找不到返回 null
+  /// 注意:若用户已通过「编辑营养」将自定义记录覆盖到同名内置食物,则返回自定义版本
   static FoodNutrition? lookup(String name) {
+    // 0. 优先查自定义表(用户编辑过的覆盖值)
+    final customExact = _customData[name];
+    if (customExact != null) return customExact;
+
     // 1. 内置表精确匹配
     final exact = data[name];
     if (exact != null) return exact;
@@ -1258,6 +1263,9 @@ class FoodNutritionDB {
     if (noParen.isNotEmpty && noParen != name) {
       final m = data[noParen];
       if (m != null) return m;
+      // 自定义表去括号后匹配
+      final cm = _customData[noParen];
+      if (cm != null) return cm;
     }
 
     // 3. 内置表去常见后缀(鲜/干)
@@ -1266,6 +1274,8 @@ class FoodNutritionDB {
         final stripped = name.substring(0, name.length - suffix.length);
         final m = data[stripped];
         if (m != null) return m;
+        final cm = _customData[stripped];
+        if (cm != null) return cm;
       }
     }
 
@@ -1276,17 +1286,7 @@ class FoodNutritionDB {
       }
     }
 
-    // 5. 自定义表精确匹配
-    final customExact = _customData[name];
-    if (customExact != null) return customExact;
-
-    // 6. 自定义表去括号后匹配
-    if (noParen.isNotEmpty && noParen != name) {
-      final m = _customData[noParen];
-      if (m != null) return m;
-    }
-
-    // 7. 自定义表模糊包含匹配
+    // 5. 自定义表模糊包含匹配
     for (final entry in _customData.entries) {
       if (name.contains(entry.key) || entry.key.contains(name)) {
         return entry.value;
@@ -1294,5 +1294,25 @@ class FoodNutritionDB {
     }
 
     return null;
+  }
+
+  /// 删除一条自定义营养记录
+  static void removeCustom(String name) {
+    _customData.remove(name);
+  }
+
+  /// 将内置表 + 自定义表合并导出为 JSON 列表
+  /// 自定义表覆盖同名内置表(用户编辑过的优先)
+  /// 用于「一键下载数据库到手机」功能
+  static List<Map<String, dynamic>> exportAllToJson() {
+    final merged = <String, FoodNutrition>{};
+    for (final e in data.values) {
+      merged[e.name] = e;
+    }
+    // 自定义覆盖内置
+    for (final e in _customData.values) {
+      merged[e.name] = e;
+    }
+    return merged.values.map((e) => e.toJson()).toList();
   }
 }

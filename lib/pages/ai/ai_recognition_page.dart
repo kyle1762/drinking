@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../models/models.dart';
 import '../../state/app_state.dart';
 import '../../theme/app_colors.dart';
@@ -68,6 +71,8 @@ class _AiRecognitionPageState extends State<AiRecognitionPage> {
                   _InfoCardRow(),
                   SizedBox(height: 12),
                   _IntakeWarningCard(),
+                  SizedBox(height: 12),
+                  _CalorieDialCard(),
                   SizedBox(height: 16),
                   _ActionCards(),
                   SizedBox(height: 16),
@@ -250,6 +255,242 @@ class _ApiKeyCardState extends State<_ApiKeyCard> {
         SnackBar(content: Text(key.isEmpty ? '已清除 API Key' : 'API Key 已保存')),
       );
     }
+  }
+}
+
+/// 食物营养数据库管理卡片
+/// 显示数据库条目数,支持一键下载到手机(JSON/CSV 格式)
+class _DatabaseCard extends StatefulWidget {
+  const _DatabaseCard();
+
+  @override
+  State<_DatabaseCard> createState() => _DatabaseCardState();
+}
+
+class _DatabaseCardState extends State<_DatabaseCard> {
+  bool _exporting = false;
+
+  Future<void> _exportAndShare(String format) async {
+    setState(() => _exporting = true);
+    try {
+      final content = format == 'json'
+          ? StorageService.exportFoodNutritionJson()
+          : StorageService.exportFoodNutritionCsv();
+      final ext = format == 'json' ? 'json' : 'csv';
+      final now = DateTime.now();
+      final stamp =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+      final fileName = 'food_nutrition_$stamp.$ext';
+
+      // 写入应用文档目录
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(content);
+
+      // 调起系统分享/保存面板
+      await Share.shareXFiles([XFile(file.path)],
+          text: '食物营养数据库($format) - 共 ${FoodNutritionDB.exportAllToJson().length} 条');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已生成 $fileName,请选择保存位置')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: CreamCard(
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                color: AppColors.mint,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.storage_outlined,
+                  size: 20, color: AppColors.mintDeep),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('食物营养数据库',
+                      style: TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(
+                      '共 ${FoodNutritionDB.exportAllToJson().length} 条(内置+自定义),可一键下载到手机',
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 11)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            RippleButton(
+              onTap: _exporting ? null : () => _showExportSheet(context),
+              borderRadius: 12,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.mint,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _exporting ? Icons.hourglass_top : Icons.download,
+                      size: 14,
+                      color: AppColors.mintDeep,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(_exporting ? '导出中...' : '下载',
+                        style: const TextStyle(
+                            color: AppColors.mintDeep,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showExportSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.cream,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.divider,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('选择导出格式',
+                    style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: RippleButton(
+                    onTap: () {
+                      Navigator.pop(context);
+                      _exportAndShare('csv');
+                    },
+                    borderRadius: AppThemeRadius.m,
+                    child: CreamCard(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.table_chart_outlined,
+                              size: 22, color: AppColors.mintDeep),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('CSV 格式(推荐)',
+                                    style: TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700)),
+                                Text('可用 Excel/WPS 直接打开查看',
+                                    style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right,
+                              size: 20, color: AppColors.textSecondary),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: RippleButton(
+                    onTap: () {
+                      Navigator.pop(context);
+                      _exportAndShare('json');
+                    },
+                    borderRadius: AppThemeRadius.m,
+                    child: CreamCard(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.code,
+                              size: 22, color: AppColors.softBlueDeep),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('JSON 格式',
+                                    style: TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700)),
+                                Text('结构化数据,便于程序读取或迁移',
+                                    style: TextStyle(
+                                        color: AppColors.textSecondary,
+                                        fontSize: 11)),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right,
+                              size: 20, color: AppColors.textSecondary),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -1303,6 +1544,264 @@ class _NutritionStatsCard extends StatelessWidget {
   }
 }
 
+/// 热量表盘卡片
+/// 半圆表盘:左半红色弧=摄入热量,右半绿色弧=消耗热量(含BMR)
+/// 中心显示日消耗值(消耗+BMR-摄入),不足目标时显示鼓励文案
+class _CalorieDialCard extends StatelessWidget {
+  const _CalorieDialCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    final dailyBurn = s.todayDailyBurn;
+    final suggestedBurn = s.suggestedDailyBurn;
+    final intake = s.todayFoodCalories;
+    final bmr = s.profile.bmr ?? 0;
+    // 消耗侧 = 运动消耗 + BMR(基础代谢也是消耗的一部分)
+    final consume = s.todayExerciseCalories + bmr;
+    // 表盘满量程:取摄入/消耗/2000 的最大值,保证弧线可见
+    final maxScale = [intake, consume, 2000].fold<int>(0, math.max).toDouble();
+
+    // 目标缺口:日消耗 < 建议日消耗时,显示还差多少 kcal
+    final showGap = dailyBurn != null &&
+        suggestedBurn != null &&
+        dailyBurn < suggestedBurn;
+    final gap = showGap ? (suggestedBurn - dailyBurn) : 0;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: CreamCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.speed_outlined,
+                    size: 18, color: AppColors.textPrimary),
+                const SizedBox(width: 6),
+                const Text('热量表盘',
+                    style: TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
+                const Spacer(),
+                _legend(const Color(0xFFE57373), '摄入'),
+                const SizedBox(width: 8),
+                _legend(const Color(0xFF66BB6A), '消耗'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 150,
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: _DialPainter(
+                      intake: intake.toDouble(),
+                      consume: consume.toDouble(),
+                      maxScale: maxScale,
+                    ),
+                  ),
+                  // 中心数值
+                  Positioned(
+                    bottom: 0,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          dailyBurn != null ? '$dailyBurn' : '--',
+                          style: TextStyle(
+                            color: dailyBurn != null
+                                ? AppColors.textPrimary
+                                : AppColors.textSecondary,
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const Text('日消耗 kcal',
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            // 左右数值标注
+            Row(
+              children: [
+                Expanded(
+                  child: _sideLabel('摄入', '$intake', const Color(0xFFE57373)),
+                ),
+                Expanded(
+                  child: _sideLabel(
+                      '消耗', '$consume', const Color(0xFF66BB6A)),
+                ),
+              ],
+            ),
+            if (showGap) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.banner,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.flag_outlined,
+                        size: 16, color: Color(0xFFE6A700)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '距离今日目标还差 $gap kcal,继续加油哦~',
+                        style: const TextStyle(
+                            color: Color(0xFFE6A700),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ] else if (dailyBurn == null) ...[
+              const SizedBox(height: 8),
+              const Text('*完善个人信息后可计算每日消耗',
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 10)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _legend(Color c, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text(label,
+            style: const TextStyle(
+                color: AppColors.textSecondary, fontSize: 11)),
+      ],
+    );
+  }
+
+  Widget _sideLabel(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(label,
+            style: const TextStyle(
+                color: AppColors.textSecondary, fontSize: 11)),
+        const SizedBox(height: 2),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(value,
+                style: TextStyle(
+                    color: color,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800)),
+            const SizedBox(width: 2),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 2),
+              child: Text('kcal',
+                  style: TextStyle(
+                      color: AppColors.textSecondary, fontSize: 9)),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 热量表盘画板:上半圆,左红(摄入)右绿(消耗)
+class _DialPainter extends CustomPainter {
+  final double intake;
+  final double consume;
+  final double maxScale;
+  _DialPainter({
+    required this.intake,
+    required this.consume,
+    required this.maxScale,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    // 圆心放在底部中央,半径自适应宽高
+    final center = Offset(w / 2, h - 8);
+    final radius = (w / 2 - 20).clamp(40.0, 160.0);
+
+    final rect = Rect.fromCircle(center: center, radius: radius);
+    const strokeWidth = 18.0;
+
+    // 背景轨道:上半圆(从 9 点经 12 点到 3 点)
+    final bgPaint = Paint()
+      ..color = AppColors.paused
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(rect, math.pi, math.pi, false, bgPaint);
+
+    // 左半弧(红,摄入):从 9 点向 12 点生长
+    final intakeFrac =
+        maxScale > 0 ? (intake / maxScale).clamp(0.0, 1.0) : 0.0;
+    if (intakeFrac > 0) {
+      final redPaint = Paint()
+        ..color = const Color(0xFFE57373)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(rect, math.pi, (math.pi / 2) * intakeFrac, false, redPaint);
+    }
+
+    // 右半弧(绿,消耗):从 3 点向 12 点生长
+    final consumeFrac =
+        maxScale > 0 ? (consume / maxScale).clamp(0.0, 1.0) : 0.0;
+    if (consumeFrac > 0) {
+      final greenPaint = Paint()
+        ..color = const Color(0xFF66BB6A)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.round;
+      // start = 2π - π/2*frac, sweep = π/2*frac(顺时针)
+      final start = 2 * math.pi - (math.pi / 2) * consumeFrac;
+      canvas.drawArc(rect, start, (math.pi / 2) * consumeFrac, false, greenPaint);
+    }
+
+    // 中央分隔刻度(12 点位置小竖线)
+    final tickPaint = Paint()
+      ..color = AppColors.textSecondary
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(center.dx, center.dy - radius - 4),
+      Offset(center.dx, center.dy - radius - 14),
+      tickPaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DialPainter old) =>
+      old.intake != intake ||
+      old.consume != consume ||
+      old.maxScale != maxScale;
+}
+
 /// 摄入不足提示卡片
 class _IntakeWarningCard extends StatelessWidget {
   const _IntakeWarningCard();
@@ -1593,6 +2092,8 @@ class _DietAdviceCardState extends State<_DietAdviceCard> {
   }
 }
 
+/// 拍照记录卡片 - 合并饮食/运动入口
+/// 点击后先选择"记录食物"或"记录运动",再选择拍照/相册/手动输入
 class _ActionCards extends StatelessWidget {
   const _ActionCards();
 
@@ -1600,70 +2101,62 @@ class _ActionCards extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: _actionCard(
-              context,
-              icon: Icons.restaurant_outlined,
-              title: '饮食记录',
-              subtitle: '拍照识别/手动输入',
-              color: AppColors.softBlue,
-              deepColor: AppColors.softBlueDeep,
-              onTap: () => _pickAndRecognize(context, AiRecognitionType.food),
+      child: CreamCard(
+        onTap: () => _chooseRecordType(context),
+        color: AppColors.softBlue,
+        radius: AppThemeRadius.l,
+        padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.camera_alt_outlined,
+                  size: 24, color: AppColors.softBlueDeep),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _actionCard(
-              context,
-              icon: Icons.directions_run_outlined,
-              title: '运动记录',
-              subtitle: '拍照识别/手动输入',
-              color: AppColors.mint,
-              deepColor: AppColors.mintDeep,
-              onTap: () =>
-                  _pickAndRecognize(context, AiRecognitionType.exercise),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('拍照记录',
+                      style: TextStyle(
+                          color: AppColors.softBlueDeep,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                  SizedBox(height: 4),
+                  Text('点击拍照/选择图片,识别后选择记录食物或运动',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12)),
+                ],
+              ),
             ),
-          ),
-        ],
+            const Icon(Icons.chevron_right,
+                size: 22, color: AppColors.softBlueDeep),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _actionCard(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required Color deepColor,
-    required VoidCallback onTap,
-  }) {
-    return CreamCard(
-      onTap: onTap,
-      color: color,
-      radius: AppThemeRadius.l,
-      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-      child: Column(
-        children: [
-          Icon(icon, size: 36, color: deepColor),
-          const SizedBox(height: 10),
-          Text(title,
-              style: TextStyle(
-                  color: deepColor, fontSize: 15, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text(subtitle,
-              style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 12)),
-        ],
-      ),
+  /// 第一步:选择记录类型(食物/运动)
+  Future<void> _chooseRecordType(BuildContext context) async {
+    final type = await showModalBottomSheet<AiRecognitionType>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const _RecordTypeSheet(),
     );
+    if (type == null) return;
+    if (!context.mounted) return;
+    await _pickAndRecognize(context, type);
   }
 
   Future<void> _pickAndRecognize(
       BuildContext context, AiRecognitionType type) async {
-    // 食物和运动都提供"手动输入"选项
     final isFood = type == AiRecognitionType.food;
     _ImageSource? source;
     source = await showModalBottomSheet<_ImageSource>(
@@ -1728,6 +2221,114 @@ class _ActionCards extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => _ResultSheet(result: result),
+    );
+  }
+}
+
+/// 记录类型选择 sheet(食物/运动)
+class _RecordTypeSheet extends StatelessWidget {
+  const _RecordTypeSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.cream,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('选择记录类型',
+                  style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 12),
+              _typeItem(
+                context,
+                icon: Icons.restaurant_outlined,
+                title: '记录食物',
+                subtitle: '拍照识别菜品/营养成分表,或手动输入食材',
+                color: AppColors.softBlue,
+                deepColor: AppColors.softBlueDeep,
+                type: AiRecognitionType.food,
+              ),
+              const SizedBox(height: 8),
+              _typeItem(
+                context,
+                icon: Icons.directions_run_outlined,
+                title: '记录运动',
+                subtitle: '拍照识别运动,或手动输入运动名称',
+                color: AppColors.mint,
+                deepColor: AppColors.mintDeep,
+                type: AiRecognitionType.exercise,
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _typeItem(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required Color deepColor,
+    required AiRecognitionType type,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: RippleButton(
+        onTap: () => Navigator.pop(context, type),
+        borderRadius: AppThemeRadius.m,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(AppThemeRadius.m),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 24, color: deepColor),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: TextStyle(
+                            color: deepColor,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            color: AppColors.textSecondary, fontSize: 11)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 20, color: deepColor),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1880,50 +2481,58 @@ class _ManualFoodSheet extends StatefulWidget {
 class _ManualFoodSheetState extends State<_ManualFoodSheet> {
   late TextEditingController _ingredientCtrl;
   late TextEditingController _amountCtrl;
-  late TextEditingController _caloriesCtrl; // 手动修改单次热量
   double _amount = 150;
-  List<FoodIngredient> _ingredients = const [];
-  double _kcalPer100g = 0;
+  List<FoodIngredient> _ingredients = [];
   bool _lookingUp = false;
   bool _confirmed = false;
-  bool _useManualCalories = false;
 
   @override
   void initState() {
     super.initState();
     _ingredientCtrl = TextEditingController();
     _amountCtrl = TextEditingController(text: '150');
-    _caloriesCtrl = TextEditingController();
   }
 
   @override
   void dispose() {
     _ingredientCtrl.dispose();
     _amountCtrl.dispose();
-    _caloriesCtrl.dispose();
     super.dispose();
   }
 
-  /// 自动计算的总热量(不考虑手动覆盖)
-  int get _autoCalories =>
-      (_kcalPer100g * _amount / 100).round();
+  /// 占比总和(用于归一化,用户编辑后占比之和可能≠1)
+  double get _ratioSum =>
+      _ingredients.fold(0.0, (s, e) => s + e.ratio);
 
-  /// 总热量:手动修改时用手动值,否则用自动计算值
-  int get _totalCalories {
-    if (_useManualCalories) {
-      final v = int.tryParse(_caloriesCtrl.text.trim());
-      if (v != null && v >= 0) return v;
+  /// 占比合计百分比(显示用)
+  int get ratioSumPercent => (_ratioSum * 100).round();
+
+  /// 实时计算的每100g热量(基于当前食材列表+占比,占比归一化)
+  double get _kcalPer100g {
+    final sum = _ratioSum;
+    if (sum <= 0) return 0;
+    double total = 0;
+    for (final ing in _ingredients) {
+      final nut = FoodNutritionDB.lookup(ing.name);
+      final kcal = nut?.energy ?? 150; // 未匹配按默认混合菜品
+      total += kcal * (ing.ratio / sum);
     }
-    return _autoCalories;
+    return total;
   }
+
+  /// 总热量(基于 kcal/100g * 摄入量)
+  int get _totalCalories =>
+      (_kcalPer100g * _amount / 100).round();
 
   ({double protein, double fat, double carbs, double fiber})
       get _nutrition {
+    final sum = _ratioSum;
+    if (sum <= 0) return (protein: 0, fat: 0, carbs: 0, fiber: 0);
     double p = 0, f = 0, c = 0, fi = 0;
     for (final ing in _ingredients) {
       final nut = FoodNutritionDB.lookup(ing.name);
       if (nut != null) {
-        final grams = _amount * ing.ratio;
+        final grams = _amount * (ing.ratio / sum);
         final scaled = nut.scaled(grams);
         p += scaled.protein;
         f += scaled.fat;
@@ -1934,67 +2543,105 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
     return (protein: p, fat: f, carbs: c, fiber: fi);
   }
 
-  /// 解析用户输入的食材(逗号分隔),查询营养并重算 kcal/100g
+  /// 更新某食材占比(用户手动编辑)
+  void _updateRatio(int index, double ratio) {
+    setState(() {
+      final clamped = ratio.clamp(0.0, 1.0);
+      _ingredients[index] =
+          FoodIngredient(name: _ingredients[index].name, ratio: clamped);
+    });
+  }
+
+  /// 删除某食材
+  void _removeIngredient(int index) {
+    setState(() {
+      _ingredients.removeAt(index);
+      if (_ingredients.isEmpty) _confirmed = false;
+    });
+  }
+
+  /// 解析用户输入:
+  /// - 单个菜名(无分隔符)→ 调用 AI 识别菜品中的食材及占比(可编辑)
+  /// - 多个食材(逗号/顿号/空格分隔)→ 按等占比处理
+  /// 之后对每个食材查询本地营养表,未匹配则调用 AI 补全并持久化
   Future<void> _lookupIngredients() async {
     final text = _ingredientCtrl.text.trim();
     final messenger = ScaffoldMessenger.of(context);
     if (text.isEmpty) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('请输入食材名称')),
+        const SnackBar(content: Text('请输入菜品或食材名称')),
       );
       return;
     }
-    final names = text
+
+    // 判断是否为多食材输入(含分隔符)
+    final tokens = text
         .split(RegExp(r'[,，、\s]+'))
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
         .toList();
-    if (names.isEmpty) return;
+    if (tokens.isEmpty) return;
+    final isMulti = tokens.length > 1;
 
     setState(() => _lookingUp = true);
-    final ingredients = <FoodIngredient>[];
-    double totalEnergy = 0;
-    int matched = 0;
-    final ratio = 1.0 / names.length;
 
-    for (final name in names) {
-      var nut = FoodNutritionDB.lookup(name);
+    final ingredients = <FoodIngredient>[];
+    int aiRecognized = 0;
+
+    if (!isMulti && AiService.hasApiKey) {
+      // 单菜名:先调用 AI 识别菜品中的食材及占比
+      debugPrint('[ManualFood] 单菜名输入,调用 AI 识别食材: $text');
+      final aiIngredients =
+          await AiService.recognizeIngredientsFromDish(text);
+      if (aiIngredients != null && aiIngredients.isNotEmpty) {
+        ingredients.addAll(aiIngredients);
+        aiRecognized = aiIngredients.length;
+      } else {
+        // AI 失败,按单一食材处理
+        ingredients.add(FoodIngredient(name: text, ratio: 1.0));
+      }
+    } else {
+      // 多食材:等占比
+      final ratio = 1.0 / tokens.length;
+      for (final name in tokens) {
+        ingredients.add(FoodIngredient(name: name, ratio: ratio));
+      }
+    }
+
+    // 对每个食材查询/补全营养表
+    int matched = 0;
+    for (final ing in ingredients) {
+      var nut = FoodNutritionDB.lookup(ing.name);
       if (nut == null) {
-        debugPrint('[ManualFood] 食材未匹配,调用 AI 补全: $name');
-        nut = await AiService.lookupIngredientNutrition(name);
+        debugPrint('[ManualFood] 食材未匹配,调用 AI 补全: ${ing.name}');
+        nut = await AiService.lookupIngredientNutrition(ing.name);
         if (nut != null) {
           FoodNutritionDB.addCustom(nut);
           await StorageService.saveCustomFoodNutrition();
-          debugPrint('[ManualFood] 新增自定义食材: $name -> ${nut.energy}kcal/100g');
+          debugPrint(
+              '[ManualFood] 新增自定义食材: ${ing.name} -> ${nut.energy}kcal/100g');
         }
       }
-      ingredients.add(FoodIngredient(name: name, ratio: ratio));
-      if (nut != null) {
-        totalEnergy += nut.energy * ratio;
-        matched++;
-      }
+      if (nut != null) matched++;
     }
 
-    if (matched < names.length) {
-      totalEnergy += 150 * (1.0 - matched / names.length);
-    }
-
+    if (!mounted) return;
     setState(() {
       _ingredients = ingredients;
-      _kcalPer100g = totalEnergy;
       _confirmed = true;
       _lookingUp = false;
     });
 
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          matched == names.length
-              ? '已识别 $matched 个食材,营养已计算'
-              : '已识别 $matched/${names.length} 个食材,未匹配按默认值估算',
-        ),
-      ),
-    );
+    final total = ingredients.length;
+    String msg;
+    if (aiRecognized > 0 && isMulti == false) {
+      msg = 'AI 识别出 $aiRecognized 个食材及占比,可手动调整';
+    } else if (matched == total) {
+      msg = '已识别 $matched 个食材,营养已计算';
+    } else {
+      msg = '已识别 $matched/$total 个食材,未匹配按默认值估算';
+    }
+    messenger.showSnackBar(SnackBar(content: Text(msg)));
   }
 
   void _setAmount(double v, {bool fromInput = false}) {
@@ -2077,7 +2724,7 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('食材(逗号分隔,一次性输入全部)',
+                    const Text('菜品/食材名称',
                         style: TextStyle(
                             color: AppColors.textPrimary,
                             fontSize: 13,
@@ -2087,7 +2734,7 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
                       controller: _ingredientCtrl,
                       maxLines: 2,
                       decoration: InputDecoration(
-                        hintText: '如:番茄,鸡蛋,葱花,米饭',
+                        hintText: '输入菜名(如:番茄炒蛋)自动识别食材,或用逗号分隔多个食材',
                         isDense: true,
                         filled: true,
                         fillColor: AppColors.cream,
@@ -2157,31 +2804,39 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
                     // 已确认:展示食材列表 + kcal/100g + 摄入量 + 营养预览
                     if (_confirmed) ...[
                       const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: _ingredients.map((ing) {
-                          final nutData = FoodNutritionDB.lookup(ing.name);
-                          final matched = nutData != null;
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: matched
-                                  ? AppColors.softBlue
-                                  : AppColors.banner,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              '${ing.name} ${(ing.ratio * 100).round()}%${matched ? '' : '(AI补全)'}',
+                      Row(
+                        children: [
+                          const Text('食材占比(可手动调整)',
                               style: TextStyle(
-                                color: matched
-                                    ? AppColors.softBlueDeep
-                                    : AppColors.textSecondary,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
+                                  color: AppColors.textPrimary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600)),
+                          const Spacer(),
+                          Text(
+                            '合计 ${(ratioSumPercent)}%',
+                            style: TextStyle(
+                              color: (ratioSumPercent - 100).abs() <= 5
+                                  ? AppColors.mintDeep
+                                  : const Color(0xFFE6A700),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
                             ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Column(
+                        children: _ingredients.asMap().entries.map((entry) {
+                          final i = entry.key;
+                          final ing = entry.value;
+                          final nutData = FoodNutritionDB.lookup(ing.name);
+                          return _EditableIngredientRow(
+                            key: ValueKey('ing_${i}_${ing.name}'),
+                            name: ing.name,
+                            ratio: ing.ratio,
+                            matched: nutData != null,
+                            onRatioChanged: (r) => _updateRatio(i, r),
+                            onDeleted: () => _removeIngredient(i),
                           );
                         }).toList(),
                       ),
@@ -2263,110 +2918,6 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
                           ),
                         ],
                       ),
-                      // 手动修改单次热量
-                      const SizedBox(height: 8),
-                      RippleButton(
-                        onTap: () => setState(() {
-                          _useManualCalories = !_useManualCalories;
-                          if (_useManualCalories) {
-                            _caloriesCtrl.text = _autoCalories.toString();
-                          }
-                        }),
-                        borderRadius: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: _useManualCalories
-                                ? const Color(0xFFFFF0E0)
-                                : AppColors.cream,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: _useManualCalories
-                                  ? const Color(0xFFCC7A00).withAlpha(80)
-                                  : AppColors.divider,
-                              width: 0.5,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                _useManualCalories
-                                    ? Icons.expand_less
-                                    : Icons.edit_outlined,
-                                size: 14,
-                                color: _useManualCalories
-                                    ? const Color(0xFFCC7A00)
-                                    : AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  _useManualCalories
-                                      ? '手动修改热量(已启用)'
-                                      : '热量不准?点击手动修改',
-                                  style: TextStyle(
-                                    color: _useManualCalories
-                                        ? const Color(0xFFCC7A00)
-                                        : AppColors.textSecondary,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (_useManualCalories) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            const Text('单次热量',
-                                style: TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600)),
-                            const Spacer(),
-                            SizedBox(
-                              width: 110,
-                              child: TextField(
-                                controller: _caloriesCtrl,
-                                keyboardType: TextInputType.number,
-                                textAlign: TextAlign.right,
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  filled: true,
-                                  fillColor: AppColors.cream,
-                                  border: OutlineInputBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(AppThemeRadius.s),
-                                    borderSide: BorderSide.none,
-                                  ),
-                                  suffixText: 'kcal',
-                                  suffixStyle: const TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 12),
-                                ),
-                                style: const TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600),
-                                onChanged: (_) => setState(() {}),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Padding(
-                          padding: EdgeInsets.only(left: 4),
-                          child: Text(
-                              '提示:手动热量将覆盖自动计算值,营养构成仍按比例显示',
-                              style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 10)),
-                        ),
-                      ],
                       const SizedBox(height: 12),
                       _NutritionPreview(
                         protein: nut.protein,
@@ -2432,6 +2983,160 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
   }
 }
 
+/// 可编辑食材占比行(名称 + 匹配状态 + 占比输入 + 删除)
+/// 用于手动输入饮食时,展示 AI 识别出的食材并允许用户调整占比
+class _EditableIngredientRow extends StatefulWidget {
+  const _EditableIngredientRow({
+    super.key,
+    required this.name,
+    required this.ratio,
+    required this.matched,
+    required this.onRatioChanged,
+    required this.onDeleted,
+  });
+  final String name;
+  final double ratio;
+  final bool matched;
+  final ValueChanged<double> onRatioChanged;
+  final VoidCallback onDeleted;
+
+  @override
+  State<_EditableIngredientRow> createState() =>
+      _EditableIngredientRowState();
+}
+
+class _EditableIngredientRowState extends State<_EditableIngredientRow> {
+  late TextEditingController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: '${(widget.ratio * 100).round()}');
+  }
+
+  @override
+  void didUpdateWidget(covariant _EditableIngredientRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newText = '${(widget.ratio * 100).round()}';
+    // 外部占比变更时同步输入框(如重新查询),避免覆盖用户正在输入的值
+    if (_ctrl.text != newText && MediaQuery.of(context).viewInsets.bottom == 0) {
+      _ctrl.text = newText;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 5,
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    widget.name,
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: widget.matched ? AppColors.mint : AppColors.banner,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    widget.matched ? '已匹配' : 'AI补全',
+                    style: TextStyle(
+                      color: widget.matched
+                          ? AppColors.mintDeep
+                          : AppColors.textSecondary,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 4,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    min: 0,
+                    max: 100,
+                    divisions: 20,
+                    value: (widget.ratio * 100).clamp(0.0, 100.0),
+                    activeColor: AppColors.softBlueDeep,
+                    onChanged: (v) {
+                      _ctrl.text = '${v.round()}';
+                      widget.onRatioChanged(v / 100);
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 48,
+                  child: TextField(
+                    controller: _ctrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      filled: true,
+                      fillColor: AppColors.cream,
+                      border: OutlineInputBorder(
+                        borderRadius:
+                            BorderRadius.circular(AppThemeRadius.s),
+                        borderSide: BorderSide.none,
+                      ),
+                      suffixText: '%',
+                      suffixStyle: const TextStyle(
+                          fontSize: 9, color: AppColors.textSecondary),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 6),
+                    ),
+                    onChanged: (text) {
+                      final v = double.tryParse(text);
+                      if (v != null) {
+                        widget.onRatioChanged((v / 100).clamp(0.0, 1.0));
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 14),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            color: AppColors.textSecondary,
+            onPressed: widget.onDeleted,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// 手动输入运动 bottom sheet
 /// 用户输入运动名称后,点击"AI 估算"按钮,带上性别/年龄/身高/体重调用 AI 估算 kcal/次
 /// 估算结果可手动微调;若未配置 API Key 或未填全个人信息,提示用户
@@ -2446,11 +3151,9 @@ class _ManualExerciseSheetState extends State<_ManualExerciseSheet> {
   late TextEditingController _nameCtrl;
   late TextEditingController _kcalCtrl;
   late TextEditingController _repsCtrl;
-  late TextEditingController _totalKcalCtrl; // 手动修改总热量
   double _reps = 30;
   bool _estimating = false;
   bool _estimated = false; // 是否已成功估算过
-  bool _useManualCalories = false;
 
   @override
   void initState() {
@@ -2458,7 +3161,6 @@ class _ManualExerciseSheetState extends State<_ManualExerciseSheet> {
     _nameCtrl = TextEditingController();
     _kcalCtrl = TextEditingController(text: '0.5');
     _repsCtrl = TextEditingController(text: '30');
-    _totalKcalCtrl = TextEditingController();
   }
 
   @override
@@ -2466,22 +3168,12 @@ class _ManualExerciseSheetState extends State<_ManualExerciseSheet> {
     _nameCtrl.dispose();
     _kcalCtrl.dispose();
     _repsCtrl.dispose();
-    _totalKcalCtrl.dispose();
     super.dispose();
   }
 
-  /// 自动计算的总热量(单次消耗 * 次数)
-  int get _autoCalories =>
+  /// 总热量(单次消耗 * 次数)
+  int get _totalCalories =>
       ((double.tryParse(_kcalCtrl.text) ?? 0) * _reps).round();
-
-  /// 总热量:手动修改时用手动值,否则用自动计算值
-  int get _totalCalories {
-    if (_useManualCalories) {
-      final v = int.tryParse(_totalKcalCtrl.text.trim());
-      if (v != null && v >= 0) return v;
-    }
-    return _autoCalories;
-  }
 
   /// 滑块最大值:随用户输入的数值动态扩大(支持如 10000 步)
   double get _sliderMax {
@@ -2773,109 +3465,6 @@ class _ManualExerciseSheetState extends State<_ManualExerciseSheet> {
                         ),
                       ],
                     ),
-                    // 手动修改总热量
-                    const SizedBox(height: 8),
-                    RippleButton(
-                      onTap: () => setState(() {
-                        _useManualCalories = !_useManualCalories;
-                        if (_useManualCalories) {
-                          _totalKcalCtrl.text = _autoCalories.toString();
-                        }
-                      }),
-                      borderRadius: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: _useManualCalories
-                              ? const Color(0xFFFFF0E0)
-                              : AppColors.cream,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _useManualCalories
-                                ? const Color(0xFFCC7A00).withAlpha(80)
-                                : AppColors.divider,
-                            width: 0.5,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _useManualCalories
-                                  ? Icons.expand_less
-                                  : Icons.edit_outlined,
-                              size: 14,
-                              color: _useManualCalories
-                                  ? const Color(0xFFCC7A00)
-                                  : AppColors.textSecondary,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                _useManualCalories
-                                    ? '手动修改热量(已启用)'
-                                    : '热量不准?点击手动修改',
-                                style: TextStyle(
-                                  color: _useManualCalories
-                                      ? const Color(0xFFCC7A00)
-                                      : AppColors.textSecondary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_useManualCalories) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Text('总消耗热量',
-                              style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600)),
-                          const Spacer(),
-                          SizedBox(
-                            width: 110,
-                            child: TextField(
-                              controller: _totalKcalCtrl,
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.right,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                filled: true,
-                                fillColor: AppColors.cream,
-                                border: OutlineInputBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(AppThemeRadius.s),
-                                  borderSide: BorderSide.none,
-                                ),
-                                suffixText: 'kcal',
-                                suffixStyle: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 12),
-                              ),
-                              style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600),
-                              onChanged: (_) => setState(() {}),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      const Padding(
-                        padding: EdgeInsets.only(left: 4),
-                        child: Text('提示:手动热量将覆盖自动计算值',
-                            style: TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 10)),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -2972,9 +3561,10 @@ class _ResultSheetState extends State<_ResultSheet> {
   late TextEditingController _amountCtrl;
   // 低置信度时手动输入食材
   late TextEditingController _ingredientCtrl;
-  // 手动修改单次热量值(空表示使用自动计算值)
-  late TextEditingController _caloriesCtrl;
-  bool _useManualCalories = false;
+  // 用户覆盖后的 kcal/100g(空表示使用 AI 识别值)
+  // 修改后立即持久化到本地食物营养数据库(覆盖同名食材)
+  double? _overrideKcalPer100g;
+  FoodNutrition? _overrideNutrition;
   List<FoodIngredient> _manualIngredients = const [];
   double _manualKcalPer100g = 0;
   bool _lookingUp = false;
@@ -2993,7 +3583,6 @@ class _ResultSheetState extends State<_ResultSheet> {
     _nameCtrl = TextEditingController(text: widget.result.name);
     _amountCtrl = TextEditingController(text: _amount.round().toString());
     _ingredientCtrl = TextEditingController();
-    _caloriesCtrl = TextEditingController();
   }
 
   @override
@@ -3001,7 +3590,6 @@ class _ResultSheetState extends State<_ResultSheet> {
     _nameCtrl.dispose();
     _amountCtrl.dispose();
     _ingredientCtrl.dispose();
-    _caloriesCtrl.dispose();
     super.dispose();
   }
 
@@ -3019,35 +3607,38 @@ class _ResultSheetState extends State<_ResultSheet> {
   List<FoodIngredient> get _activeIngredients =>
       _manualConfirmed ? _manualIngredients : widget.result.ingredients;
 
-  /// 当前生效的 kcal/100g(手动确认后用手动计算值,否则用原值)
-  double get _activeKcalPer100g =>
-      _manualConfirmed ? _manualKcalPer100g : widget.result.value;
+  /// 当前生效的 kcal/100g
+  /// 优先级:用户编辑过的覆盖值 > 手动确认值 > AI 识别值
+  double get _activeKcalPer100g {
+    if (_overrideKcalPer100g != null) return _overrideKcalPer100g!;
+    return _manualConfirmed ? _manualKcalPer100g : widget.result.value;
+  }
 
-  /// 自动计算的总热量(kcal,不考虑手动覆盖)
-  int get _autoCalories {
+  /// 自动计算的总热量(kcal)
+  /// 食物:kcal/100g × 量 / 100;运动:单次消耗 × 次数
+  int get _totalCalories {
     if (widget.result.type == AiRecognitionType.food) {
       return (_activeKcalPer100g * _amount / 100).round();
     }
     return (widget.result.value * _amount).round();
   }
 
-  /// 总热量(kcal)
-  /// 若用户手动修改了热量值,则使用手动值;否则使用自动计算值
-  int get _totalCalories {
-    // 用户手动修改了热量值时,优先使用手动值
-    if (_useManualCalories) {
-      final v = int.tryParse(_caloriesCtrl.text.trim());
-      if (v != null && v >= 0) return v;
-    }
-    return _autoCalories;
-  }
-
   /// 食物:根据食材比例和总克数计算营养
-  /// 若来自营养成分表,直接用表上数据按克数线性缩放
+  /// 优先用用户编辑过的覆盖值;若来自营养成分表,直接用表上数据按克数线性缩放
   ({double protein, double fat, double carbs, double fiber})
       get _nutrition {
     if (widget.result.type != AiRecognitionType.food) {
       return (protein: 0, fat: 0, carbs: 0, fiber: 0);
+    }
+    // 用户已编辑过营养:直接按克数线性缩放
+    if (_overrideNutrition != null) {
+      final scaled = _overrideNutrition!.scaled(_amount);
+      return (
+        protein: scaled.protein,
+        fat: scaled.fat,
+        carbs: scaled.carbs,
+        fiber: scaled.fiber,
+      );
     }
     // 来自营养成分表:直接用 labelNutrition 按克数缩放
     if (widget.result.fromLabel && widget.result.labelNutrition != null) {
@@ -3574,108 +4165,104 @@ class _ResultSheetState extends State<_ResultSheet> {
                           isFood ? AppColors.softBlueDeep : AppColors.mintDeep,
                       onChanged: (v) => _setAmount(v),
                     ),
-                    // 手动修改单次热量值(用户觉得自动计算不准时使用)
-                    const SizedBox(height: 8),
-                    RippleButton(
-                      onTap: () => setState(() {
-                        _useManualCalories = !_useManualCalories;
-                        if (_useManualCalories) {
-                          // 展开时预填当前自动计算的总热量
-                          _caloriesCtrl.text = _autoCalories.toString();
-                        }
-                      }),
-                      borderRadius: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: _useManualCalories
-                              ? const Color(0xFFFFF0E0)
-                              : AppColors.cream,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _useManualCalories
-                                ? const Color(0xFFCC7A00).withAlpha(80)
-                                : AppColors.divider,
-                            width: 0.5,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              _useManualCalories
-                                  ? Icons.expand_less
-                                  : Icons.edit_outlined,
-                              size: 14,
-                              color: _useManualCalories
-                                  ? const Color(0xFFCC7A00)
-                                  : AppColors.textSecondary,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                _useManualCalories ? '手动修改热量(已启用)' : '热量不准?点击手动修改',
-                                style: TextStyle(
-                                  color: _useManualCalories
-                                      ? const Color(0xFFCC7A00)
-                                      : AppColors.textSecondary,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (_useManualCalories) ...[
+                    // 食物:编辑每100g营养(用户觉得识别不准时使用)
+                    if (isFood) ...[
                       const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Text('单次热量',
-                              style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600)),
-                          const Spacer(),
-                          SizedBox(
-                            width: 110,
-                            child: TextField(
-                              controller: _caloriesCtrl,
-                              keyboardType: TextInputType.number,
-                              textAlign: TextAlign.right,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                filled: true,
-                                fillColor: AppColors.cream,
-                                border: OutlineInputBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(AppThemeRadius.s),
-                                  borderSide: BorderSide.none,
-                                ),
-                                suffixText: 'kcal',
-                                suffixStyle: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 12),
-                              ),
-                              style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600),
-                              onChanged: (_) => setState(() {}),
+                      RippleButton(
+                        onTap: () async {
+                          final edited = await showModalBottomSheet<FoodNutrition>(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (ctx) => _EditNutritionSheet(
+                              name: widget.result.name,
+                              initial: _overrideNutrition ??
+                                  widget.result.labelNutrition ??
+                                  FoodNutrition(
+                                    name: widget.result.name,
+                                    energy: _activeKcalPer100g,
+                                    protein: 0,
+                                    fat: 0,
+                                    carbs: 0,
+                                    fiber: 0,
+                                  ),
+                            ),
+                          );
+                          if (edited != null) {
+                            // 持久化到本地食物营养数据库(覆盖同名食材)
+                            FoodNutritionDB.addCustom(edited);
+                            await StorageService.saveCustomFoodNutrition();
+                            setState(() {
+                              _overrideNutrition = edited;
+                              _overrideKcalPer100g = edited.energy;
+                            });
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(
+                                  '已更新「${edited.name}」每100g营养数据,并保存到本地数据库')),
+                            );
+                          }
+                        },
+                        borderRadius: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _overrideNutrition != null
+                                ? const Color(0xFFFFF0E0)
+                                : AppColors.cream,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _overrideNutrition != null
+                                  ? const Color(0xFFCC7A00).withAlpha(80)
+                                  : AppColors.divider,
+                              width: 0.5,
                             ),
                           ),
-                        ],
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.edit_note,
+                                size: 14,
+                                color: _overrideNutrition != null
+                                    ? const Color(0xFFCC7A00)
+                                    : AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _overrideNutrition != null
+                                      ? '已修改每100g营养(点击再次编辑)'
+                                      : '每100g营养不准?点击修改',
+                                  style: TextStyle(
+                                    color: _overrideNutrition != null
+                                        ? const Color(0xFFCC7A00)
+                                        : AppColors.textSecondary,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 4),
-                      const Padding(
-                        padding: EdgeInsets.only(left: 4),
-                        child: Text(
-                            '提示:手动热量将覆盖自动计算值,营养构成仍按比例显示',
-                            style: TextStyle(
+                      if (_overrideNutrition != null) ...[
+                        const SizedBox(height: 4),
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Text(
+                            '当前: ${_overrideNutrition!.energy.toStringAsFixed(0)}kcal '
+                            '蛋白${_overrideNutrition!.protein.toStringAsFixed(1)}g '
+                            '脂肪${_overrideNutrition!.fat.toStringAsFixed(1)}g '
+                            '碳水${_overrideNutrition!.carbs.toStringAsFixed(1)}g '
+                            '纤维${_overrideNutrition!.fiber.toStringAsFixed(1)}g (每100g)',
+                            style: const TextStyle(
                                 color: AppColors.textSecondary,
-                                fontSize: 10)),
-                      ),
+                                fontSize: 10),
+                          ),
+                        ),
+                      ],
                     ],
                     // 运动:允许修改名称
                     if (!isFood) ...[
@@ -3801,6 +4388,220 @@ class _ResultSheetState extends State<_ResultSheet> {
       SnackBar(
           content: Text(
               '已记录 ${isFood ? widget.result.name : _nameCtrl.text} ${isFood ? "$amount g" : "$amount 次"} $_totalCalories kcal')),
+    );
+  }
+}
+
+/// 编辑每100g营养 bottom sheet
+/// 用户觉得识别不准时可手动修改能量/蛋白质/脂肪/碳水/膳食纤维
+/// 保存后覆盖本地食物营养数据库中的同名食材
+class _EditNutritionSheet extends StatefulWidget {
+  const _EditNutritionSheet({required this.name, required this.initial});
+  final String name;
+  final FoodNutrition initial;
+
+  @override
+  State<_EditNutritionSheet> createState() => _EditNutritionSheetState();
+}
+
+class _EditNutritionSheetState extends State<_EditNutritionSheet> {
+  late TextEditingController _energyCtrl;
+  late TextEditingController _proteinCtrl;
+  late TextEditingController _fatCtrl;
+  late TextEditingController _carbsCtrl;
+  late TextEditingController _fiberCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _energyCtrl =
+        TextEditingController(text: widget.initial.energy.toStringAsFixed(1));
+    _proteinCtrl =
+        TextEditingController(text: widget.initial.protein.toStringAsFixed(1));
+    _fatCtrl =
+        TextEditingController(text: widget.initial.fat.toStringAsFixed(1));
+    _carbsCtrl =
+        TextEditingController(text: widget.initial.carbs.toStringAsFixed(1));
+    _fiberCtrl =
+        TextEditingController(text: widget.initial.fiber.toStringAsFixed(1));
+  }
+
+  @override
+  void dispose() {
+    _energyCtrl.dispose();
+    _proteinCtrl.dispose();
+    _fatCtrl.dispose();
+    _carbsCtrl.dispose();
+    _fiberCtrl.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final energy = double.tryParse(_energyCtrl.text.trim()) ?? 0;
+    final protein = double.tryParse(_proteinCtrl.text.trim()) ?? 0;
+    final fat = double.tryParse(_fatCtrl.text.trim()) ?? 0;
+    final carbs = double.tryParse(_carbsCtrl.text.trim()) ?? 0;
+    final fiber = double.tryParse(_fiberCtrl.text.trim()) ?? 0;
+    if (energy <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请填写有效的能量值(kcal/100g)')),
+      );
+      return;
+    }
+    Navigator.pop(
+      context,
+      FoodNutrition(
+        name: widget.name,
+        energy: energy,
+        protein: protein,
+        fat: fat,
+        carbs: carbs,
+        fiber: fiber,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedPadding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      duration: const Duration(milliseconds: 200),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.cream,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.divider,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text('编辑「${widget.name}」每100g营养',
+                      style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  const Text('修改后将保存到本地数据库,下次识别同一食物自动使用',
+                      style: TextStyle(
+                          color: AppColors.textSecondary, fontSize: 11)),
+                  const SizedBox(height: 16),
+                  CreamCard(
+                    radius: 24,
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _field('能量(kcal)', _energyCtrl, 'kcal/100g'),
+                        const SizedBox(height: 8),
+                        _field('蛋白质(g)', _proteinCtrl, 'g/100g'),
+                        const SizedBox(height: 8),
+                        _field('脂肪(g)', _fatCtrl, 'g/100g'),
+                        const SizedBox(height: 8),
+                        _field('碳水化合物(g)', _carbsCtrl, 'g/100g'),
+                        const SizedBox(height: 8),
+                        _field('膳食纤维(g)', _fiberCtrl, 'g/100g'),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: RippleButton(
+                          onTap: () => Navigator.pop(context),
+                          borderRadius: AppThemeRadius.m,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.paused,
+                              borderRadius: BorderRadius.circular(AppThemeRadius.m),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text('取消',
+                                style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: RippleButton(
+                          onTap: _save,
+                          borderRadius: AppThemeRadius.m,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.softBlueDeep,
+                              borderRadius: BorderRadius.circular(AppThemeRadius.m),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text('保存',
+                                style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _field(String label, TextEditingController ctrl, String suffix) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 110,
+          child: Text(label,
+              style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+        ),
+        Expanded(
+          child: TextField(
+            controller: ctrl,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true, signed: false),
+            decoration: InputDecoration(
+              isDense: true,
+              filled: true,
+              fillColor: AppColors.cream,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                borderSide: BorderSide.none,
+              ),
+              suffixText: suffix,
+              suffixStyle:
+                  const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            ),
+            style: const TextStyle(fontSize: 13),
+          ),
+        ),
+      ],
     );
   }
 }

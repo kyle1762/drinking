@@ -1,7 +1,7 @@
 name: drinking
 description: 喝水小精灵 - 治愈奶油风喝水提醒
 publish_to: 'none'
-version: 1.9.9+9
+version: 2.0.0+10
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -47,6 +47,12 @@ dependencies:
 
   # 图片选择(相机/相册)
   image_picker: ^1.0.4
+
+  # 文件目录(导出营养数据库到本地)
+  path_provider: ^2.1.4
+
+  # 系统分享(导出文件保存到手机)
+  share_plus: ^10.1.4
 
   # 日历管理(批量添加/删除日历事件)
   device_calendar: ^4.3.3

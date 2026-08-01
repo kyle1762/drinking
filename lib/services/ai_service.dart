@@ -321,6 +321,64 @@ class AiService {
     }
   }
 
+  /// AI 从菜品名识别食材及占比(纯文本输入,无图片)
+  /// 用于「手动输入饮食」时,用户输入菜名后自动拆解食材并估算占比
+  /// 返回食材列表(含 name + ratio),失败返回 null
+  /// 注意:仅返回识别结果,不持久化营养数据(营养数据仍从本地表查询)
+  static Future<List<FoodIngredient>?> recognizeIngredientsFromDish(
+      String dishName) async {
+    if (!hasApiKey) return null;
+    try {
+      final prompt = '请分析菜品或食物"$dishName"的主要食材及重量占比。\n'
+          '返回纯JSON(不要markdown标记):\n'
+          '{"dish":"菜品名","ingredients":[{"name":"食材中文常见名","ratio":0到1之间占比}]}\n'
+          '注意:\n'
+          '1)食材名必须使用中文常见名(如:番茄、土豆、猪肉、牛肉、鸡肉、白菜、胡萝卜、鸡蛋、米饭、面条)\n'
+          '2)所有食材占比之和应接近1\n'
+          '3)最多5个主要食材,忽略用量极少的调料(如盐、味精)\n'
+          '4)若输入本身就是单一食材(如"苹果"),返回单条占比1.0\n'
+          '示例: {"dish":"番茄炒蛋","ingredients":[{"name":"番茄","ratio":0.4},{"name":"鸡蛋","ratio":0.6}]}';
+
+      final response = await http.post(
+        Uri.parse(_endpoint),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': _textModel,
+          'messages': [
+            {'role': 'user', 'content': prompt},
+          ],
+          'temperature': 0.1,
+          'max_tokens': 300,
+        }),
+      );
+      if (response.statusCode != 200) {
+        debugPrint('[AiService] 菜品食材识别 API 返回 ${response.statusCode}');
+        return null;
+      }
+      final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      final choices = respData['choices'] as List;
+      if (choices.isEmpty) return null;
+      final content = choices[0]['message']['content'] as String;
+      debugPrint('[AiService] 菜品食材识别 AI 返回: $content');
+      final json = _extractJson(content);
+      final list = json['ingredients'] as List? ?? [];
+      final result = <FoodIngredient>[];
+      for (final e in list) {
+        final name = e['name'] as String? ?? '';
+        final ratio = (e['ratio'] as num?)?.toDouble() ?? 0;
+        if (name.isEmpty || ratio <= 0) continue;
+        result.add(FoodIngredient(name: name, ratio: ratio));
+      }
+      return result.isEmpty ? null : result;
+    } catch (e) {
+      debugPrint('[AiService] 菜品食材识别失败: $e');
+      return null;
+    }
+  }
+
   /// AI 运动卡路里估算结果
   /// name: 解析出的运动名称
   /// count: 解析出的数量

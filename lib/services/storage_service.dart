@@ -351,6 +351,24 @@ class StorageService {
     } catch (_) {}
   }
 
+  /// 导出食物营养数据库为 JSON 字符串(内置+自定义,自定义覆盖内置同名项)
+  static String exportFoodNutritionJson() {
+    return jsonEncode(FoodNutritionDB.exportAllToJson());
+  }
+
+  /// 导出食物营养数据库为 CSV 字符串
+  /// 列:名称,能量(kcal/100g),蛋白质(g),脂肪(g),碳水(g),膳食纤维(g)
+  static String exportFoodNutritionCsv() {
+    final sb = StringBuffer();
+    sb.writeln('名称,能量(kcal/100g),蛋白质(g),脂肪(g),碳水(g),膳食纤维(g)');
+    for (final e in FoodNutritionDB.exportAllToJson()) {
+      sb.writeln(
+        '"${e["name"]}",${e["energy"]},${e["protein"]},${e["fat"]},${e["carbs"]},${e["fiber"]}',
+      );
+    }
+    return sb.toString();
+  }
+
   /// 清空所有持久化数据(退出登录且不保留本地数据时调用)
   static Future<void> clearAll() async {
     final keys = [
