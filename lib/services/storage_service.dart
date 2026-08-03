@@ -105,6 +105,37 @@ class StorageService {
     return null;
   }
 
+  // 用户保存的运动单次热量(运动名 -> kcal/次,永久记录供下次直接使用)
+  static const _kExerciseCalories = 'exerciseCalories';
+
+  /// 保存单个运动的单次热量(运动名 -> kcal/次),覆盖同名旧记录
+  static Future<void> saveExerciseCalorie(String name, double kcalPerRep) async {
+    final all = loadAllExerciseCalories();
+    all[name] = kcalPerRep;
+    await _p.setString(_kExerciseCalories, jsonEncode(all));
+  }
+
+  /// 加载全部运动单次热量
+  static Map<String, double> loadAllExerciseCalories() {
+    final s = _p.getString(_kExerciseCalories);
+    if (s == null) return {};
+    try {
+      final map = jsonDecode(s) as Map<String, dynamic>;
+      return map.map((k, v) => MapEntry(k, (v as num).toDouble()));
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// 查找指定运动的单次热量,找不到返回 null
+  static double? lookupExerciseCalorie(String name) {
+    final all = loadAllExerciseCalories();
+    if (all.containsKey(name)) return all[name];
+    final trimmed = name.trim();
+    if (all.containsKey(trimmed)) return all[trimmed];
+    return null;
+  }
+
   // ============ 加载全部 ============
   /// 从磁盘读取全部状态,返回一个 Map,供 AppState.bootstrap 使用
   static StoredData loadAll() {
@@ -449,6 +480,7 @@ class StorageService {
       _kDailyDietSummaries,
       _kDietAdvice,
       _kDishRecipes,
+      _kExerciseCalories,
     ];
     for (final k in keys) {
       await _p.remove(k);

@@ -13,6 +13,7 @@ import '../../dialogs.dart';
 import '../../services/ai_service.dart';
 import '../../services/storage_service.dart';
 import '../../data/food_nutrition.dart';
+import '../../data/diet_methods.dart';
 
 class AiRecognitionPage extends StatefulWidget {
   const AiRecognitionPage({super.key});
@@ -71,6 +72,8 @@ class _AiRecognitionPageState extends State<AiRecognitionPage> {
                   _IntakeWarningCard(),
                   SizedBox(height: 12),
                   _CalorieDialCard(),
+                  SizedBox(height: 12),
+                  _DietMethodCard(),
                   SizedBox(height: 16),
                   _ActionCards(),
                   SizedBox(height: 16),
@@ -387,24 +390,14 @@ class _InfoCardRow extends StatelessWidget {
               context: context,
               icon: Icons.pie_chart_outline,
               title: '今日营养',
-              subtitle: '${s.todayFoodCalories}kcal',
+              subtitle: s.profile.goal == UserGoal.loseFat
+                  ? '纤维${s.todayFiber.toStringAsFixed(1)}g'
+                  : s.profile.goal == UserGoal.gainMuscle
+                      ? '蛋白${s.todayProtein.toStringAsFixed(1)}g'
+                      : '${s.todayFoodCalories}kcal',
               bgColor: AppColors.banner,
               accentColor: const Color(0xFFE6A700),
               detail: const _NutritionStatsCard(),
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _compactCard(
-              context: context,
-              icon: Icons.local_fire_department_outlined,
-              title: '日消耗',
-              subtitle: s.todayDailyBurn != null
-                  ? '${s.todayDailyBurn}'
-                  : '--',
-              bgColor: AppColors.paused,
-              accentColor: AppColors.textPrimary,
-              detail: const _TodaySummary(),
             ),
           ),
         ],
@@ -628,7 +621,7 @@ class _ProfileCardState extends State<_ProfileCard> {
           _heightCtrl.text = result.height!.round().toString();
         }
         if (result.weight != null) {
-          _weightCtrl.text = result.weight!.toStringAsFixed(1);
+          _weightCtrl.text = result.weight!.round().toString();
         }
         if (result.muscle != null) {
           _muscleCtrl.text = result.muscle!.toStringAsFixed(1);
@@ -1574,11 +1567,15 @@ class _CalorieDialCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 8),
-            // 左右数值标注
+            // 摄入 | 基础代谢 | 消耗 三列数值标注
             Row(
               children: [
                 Expanded(
                   child: _sideLabel('摄入', '$intake', const Color(0xFFE57373)),
+                ),
+                Expanded(
+                  child: _sideLabel(
+                      '基础代谢', bmr > 0 ? '$bmr' : '--', AppColors.textSecondary),
                 ),
                 Expanded(
                   child: _sideLabel(
@@ -1762,6 +1759,288 @@ class _IntakeWarningCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 减肥方法选择卡片
+/// 展示已选减肥方法 + 推荐吃/避免吃的食物,点击可更换
+class _DietMethodCard extends StatelessWidget {
+  const _DietMethodCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final s = context.watch<AppState>();
+    final method = DietMethods.findById(s.profile.dietMethodId);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: CreamCard(
+        color: method != null ? AppColors.mint : AppColors.softBlue,
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.restaurant_menu_outlined,
+                    size: 18,
+                    color: method != null
+                        ? AppColors.mintDeep
+                        : AppColors.softBlueDeep),
+                const SizedBox(width: 6),
+                Text(
+                  method != null ? '已选择: ${method.name}' : '选择减肥方法',
+                  style: TextStyle(
+                    color: method != null
+                        ? AppColors.mintDeep
+                        : AppColors.softBlueDeep,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                RippleButton(
+                  onTap: () => _showDietMethodDialog(context),
+                  borderRadius: 12,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 4),
+                    child: Text(
+                      method != null ? '更换' : '选择',
+                      style: TextStyle(
+                        color: method != null
+                            ? AppColors.mintDeep
+                            : AppColors.softBlueDeep,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (method != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                method.description,
+                style: const TextStyle(
+                    color: AppColors.textPrimary, fontSize: 12, height: 1.4),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  _dietTag('推荐吃', method.allowedFoods.take(3).join('、'),
+                      AppColors.mintDeep),
+                  const SizedBox(width: 6),
+                  _dietTag('避免吃', method.forbiddenFoods.take(3).join('、'),
+                      const Color(0xFFE65100)),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _dietTag(String label, String content, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withAlpha(20),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            Text(content,
+                style: const TextStyle(
+                    color: AppColors.textPrimary, fontSize: 11, height: 1.3),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showDietMethodDialog(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.cream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        final s = context.read<AppState>();
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                    16, 12, 16, 16 + MediaQuery.of(ctx).viewInsets.bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.divider,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        const Icon(Icons.restaurant_menu,
+                            size: 20, color: AppColors.softBlueDeep),
+                        const SizedBox(width: 8),
+                        const Text('选择减肥方法',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary)),
+                        const Spacer(),
+                        if (s.profile.dietMethodId.isNotEmpty)
+                          TextButton(
+                            onPressed: () {
+                              s.updateProfile(
+                                  s.profile.copyWith(dietMethodId: ''));
+                              Navigator.pop(ctx);
+                            },
+                            child: const Text('清除',
+                                style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: DietMethods.all.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 10),
+                        itemBuilder: (_, i) {
+                          final m = DietMethods.all[i];
+                          final selected = m.id == s.profile.dietMethodId;
+                          return InkWell(
+                            onTap: () {
+                              s.updateProfile(
+                                  s.profile.copyWith(dietMethodId: m.id));
+                              Navigator.pop(ctx);
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? AppColors.mint
+                                    : AppColors.cream,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: selected
+                                      ? AppColors.mintDeep
+                                      : AppColors.divider,
+                                  width: selected ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(m.name,
+                                          style: TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w700,
+                                              color: selected
+                                                  ? AppColors.mintDeep
+                                                  : AppColors.textPrimary)),
+                                      const Spacer(),
+                                      if (selected)
+                                        const Icon(Icons.check_circle,
+                                            size: 18,
+                                            color: AppColors.mintDeep),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(m.description,
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary,
+                                          height: 1.4)),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 4,
+                                    children: [
+                                      ...m.allowedFoods.take(4).map((f) =>
+                                          _foodChip(f, AppColors.mintDeep,
+                                              true)),
+                                      ...m.forbiddenFoods
+                                          .take(3)
+                                          .map((f) => _foodChip(
+                                              f,
+                                              const Color(0xFFE65100),
+                                              false)),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text('适合: ${m.suitableFor}',
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textDisabled,
+                                          fontStyle: FontStyle.italic)),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _foodChip(String name, Color color, bool allowed) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withAlpha(20),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withAlpha(60), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(allowed ? Icons.check : Icons.block,
+              size: 10, color: color),
+          const SizedBox(width: 3),
+          Text(name,
+              style: TextStyle(
+                  color: color, fontSize: 11, fontWeight: FontWeight.w500)),
+        ],
       ),
     );
   }
@@ -3289,6 +3568,18 @@ class _ManualExerciseSheetState extends State<_ManualExerciseSheet> {
       );
       return;
     }
+    // 优先查找用户保存的运动热量
+    final saved = StorageService.lookupExerciseCalorie(name);
+    if (saved != null) {
+      setState(() {
+        _kcalCtrl.text = saved.toStringAsFixed(2);
+        _estimated = true;
+      });
+      messenger.showSnackBar(
+        SnackBar(content: Text('已使用保存的「$name」热量: ${saved.toStringAsFixed(2)} kcal/次')),
+      );
+      return;
+    }
     if (!AiService.hasApiKey) {
       messenger.showSnackBar(
         const SnackBar(content: Text('请先在账户页配置 API Key')),
@@ -3616,13 +3907,21 @@ class _ManualExerciseSheetState extends State<_ManualExerciseSheet> {
     );
   }
 
-  void _confirm(BuildContext context) {
+  Future<void> _confirm(BuildContext context) async {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('请输入运动名称')),
       );
       return;
+    }
+    // 若单次热量被修改过且非已保存记录,询问是否永久保存
+    final kcalPerRep = double.tryParse(_kcalCtrl.text.trim()) ?? 0;
+    final saved = StorageService.lookupExerciseCalorie(name);
+    bool saveCalorie = false;
+    if (kcalPerRep > 0 && saved == null) {
+      saveCalorie = await _showSaveExerciseDialog(context, name, kcalPerRep);
+      if (!context.mounted) return;
     }
     final s = context.read<AppState>();
     s.addExerciseRecord(ExerciseRecord(
@@ -3632,10 +3931,42 @@ class _ManualExerciseSheetState extends State<_ManualExerciseSheet> {
       calories: _totalCalories,
       reps: _reps.round(),
     ));
+    if (saveCalorie) {
+      await StorageService.saveExerciseCalorie(name, kcalPerRep);
+    }
+    if (!context.mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已记录 $name ${_reps.round()} 次 $_totalCalories kcal')),
+      SnackBar(content: Text(saveCalorie
+          ? '已记录 $name ${_reps.round()} 次 $_totalCalories kcal,热量已保存'
+          : '已记录 $name ${_reps.round()} 次 $_totalCalories kcal')),
     );
+  }
+
+  /// 询问用户是否永久保存运动单次热量
+  Future<bool> _showSaveExerciseDialog(
+      BuildContext context, String name, double kcal) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('保存运动热量?',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            content: Text(
+                '是否将「$name」的单次消耗(${kcal.toStringAsFixed(2)} kcal/次)永久保存?\n保存后下次输入相同运动名将直接使用此热量值。',
+                style: const TextStyle(fontSize: 13)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('仅本次使用'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('永久保存'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
   }
 }
 

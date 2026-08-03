@@ -375,12 +375,23 @@ class FeishuService {
   static String _buildReminderMessage(SharedPreferences prefs) {
     final pushText = prefs.getString(_kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧';
 
+    // 读取昵称
+    String nickname = '';
+    final profileStr = prefs.getString(_kProfile);
+    if (profileStr != null) {
+      try {
+        final p = jsonDecode(profileStr) as Map<String, dynamic>;
+        nickname = (p['nickname'] as String?) ?? '';
+      } catch (_) {}
+    }
+    final greeting = nickname.isNotEmpty ? '$nickname, ' : '';
+
     // 读取今日统计
     final (todayTotal, todayGoal) = _loadTodayStats(prefs);
     final rate = todayGoal > 0 ? (todayTotal * 100 ~/ todayGoal) : 0;
     final remaining = todayGoal > todayTotal ? todayGoal - todayTotal : 0;
 
-    return '$pushText\n\n'
+    return '$greeting$pushText\n\n'
         '今日已喝 ${todayTotal}ml / 目标 ${todayGoal}ml\n'
         '完成率 $rate%${remaining > 0 ? ',还差 ${remaining}ml' : ',已达标~'}';
   }

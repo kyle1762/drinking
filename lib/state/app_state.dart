@@ -458,7 +458,7 @@ class AppState extends ChangeNotifier {
   /// 取最近 N 天的饮食摘要 + 今日实时数据 + 用户目标 + 个人信息,调用 AiService 生成 DietAdvice
   /// 返回 (success, message)
   Future<(bool success, String message)> triggerDietAnalysis({
-    int recentDays = 7,
+    int recentDays = 3,
   }) async {
     if (!_profile.profileComplete) {
       return (false, '请先完善个人信息(性别/年龄/身高/体重)');

@@ -14,14 +14,14 @@ import 'ai/ai_recognition_page.dart';
 
 const _kTabs = <_TabItem>[
   _TabItem(
-      icon: Icons.water_drop_outlined, label: '喝水提醒', page: ReminderPage()),
-  _TabItem(
       icon: Icons.analytics_outlined, label: '热量追踪', page: AiRecognitionPage()),
   _TabItem(
-      icon: Icons.person_outline_rounded, label: '账号&飞书', page: AccountPage()),
+      icon: Icons.water_drop_outlined, label: '喝水提醒', page: ReminderPage()),
+  _TabItem(
+      icon: Icons.person_outline_rounded, label: 'ai&飞书', page: AccountPage()),
 ];
 
-/// 首页 - 三Tab结构(喝水提醒 / 热量追踪 / 账号&飞书)
+/// 首页 - 三Tab结构(热量追踪 / 喝水提醒 / ai&飞书)
 /// 安卓返回键逻辑:
 /// 1. 弹窗状态下返回:关闭弹窗(Flutter自动处理)
 /// 2. 非首个Tab:回到上一个Tab

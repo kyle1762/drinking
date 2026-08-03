@@ -117,6 +117,8 @@ class UserProfile {
     this.weight = 0, // kg
     this.muscle = 0, // 肌肉量 kg
     this.goal = UserGoal.maintain, // 用户目标
+    this.targetWeight = 0, // 目标体重 kg
+    this.dietMethodId = '', // 选择的减肥方法 id
     this.imagePath, // 个人形象图片路径(可选)
   });
 
@@ -131,6 +133,8 @@ class UserProfile {
   final int weight;
   final double muscle; // 肌肉量 kg
   final UserGoal goal; // 用户目标
+  final int targetWeight; // 目标体重 kg
+  final String dietMethodId; // 选择的减肥方法 id
   final String? imagePath; // 个人形象图片路径
 
   /// BMI = 体重(kg) / 身高(m)^2
@@ -184,6 +188,8 @@ class UserProfile {
     int? weight,
     double? muscle,
     UserGoal? goal,
+    int? targetWeight,
+    String? dietMethodId,
     Object? imagePath = _sentinel,
   }) {
     return UserProfile(
@@ -198,6 +204,8 @@ class UserProfile {
       weight: weight ?? this.weight,
       muscle: muscle ?? this.muscle,
       goal: goal ?? this.goal,
+      targetWeight: targetWeight ?? this.targetWeight,
+      dietMethodId: dietMethodId ?? this.dietMethodId,
       imagePath: identical(imagePath, _sentinel)
           ? this.imagePath
           : imagePath as String?,
@@ -216,6 +224,8 @@ class UserProfile {
         'weight': weight,
         'muscle': muscle,
         'goal': goal.index,
+        'targetWeight': targetWeight,
+        'dietMethodId': dietMethodId,
         'imagePath': imagePath,
       };
 
@@ -234,6 +244,8 @@ class UserProfile {
       muscle: (json['muscle'] as num?)?.toDouble() ?? 0,
       goal: UserGoal.values[((json['goal'] as num?)?.toInt() ?? 0)
           .clamp(0, UserGoal.values.length - 1)],
+      targetWeight: (json['targetWeight'] as num?)?.toInt() ?? 0,
+      dietMethodId: (json['dietMethodId'] as String?) ?? '',
       imagePath: json['imagePath'] as String?,
     );
   }

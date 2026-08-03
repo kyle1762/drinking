@@ -19,7 +19,6 @@ class AccountPage extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 120),
           children: [
             const _IllustrationHeader(),
-            const _WelcomeCard(),
             const _ApiKeyCard(),
             _FeishuConfigCard(),
             // _FeishuBindCard 仅在已登录时显示(测试推送+退出登录)
@@ -100,9 +99,7 @@ class _IllustrationHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text('账号 & 飞书关联', style: Theme.of(context).textTheme.headlineMedium),
-          const SizedBox(height: 4),
-          Text('双端同步,温柔陪伴你的每一天', style: Theme.of(context).textTheme.bodyMedium),
+          Text('AI & 飞书关联', style: Theme.of(context).textTheme.headlineMedium),
         ],
       ),
     );
@@ -1085,19 +1082,22 @@ class _ProfileModule extends StatelessWidget {
                   }
                 }),
                 const Divider(height: 1),
-                _row(context, '默认水杯', '${s.profile.defaultCup} ml',
+                _row(context, '目标体重',
+                    s.profile.targetWeight > 0 ? '${s.profile.targetWeight} kg' : '未设置',
                     onTap: () async {
                   final v = await AppDialogs.inputDialog(context,
-                      title: '默认水杯容量',
-                      hint: '输入 ml',
+                      title: '目标体重',
+                      hint: '输入 kg',
                       keyboardType: TextInputType.number,
-                      initial: '${s.profile.defaultCup}');
-                  final cup = int.tryParse(v ?? '');
-                  if (cup != null && cup > 0) {
-                    s.setDefaultCup(cup);
+                      initial: s.profile.targetWeight > 0
+                          ? '${s.profile.targetWeight}'
+                          : '');
+                  final tw = int.tryParse(v ?? '');
+                  if (tw != null && tw > 0) {
+                    s.updateProfile(s.profile.copyWith(targetWeight: tw));
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('默认水杯已更新为 $cup ml,全局同步')),
+                        SnackBar(content: Text('目标体重已更新为 $tw kg')),
                       );
                     }
                   }
