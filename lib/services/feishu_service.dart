@@ -1,8 +1,9 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'feishu_config.dart';
+import 'storage_service.dart';
 
 /// 飞书 API 服务
 /// 负责 OAuth 授权、获取 user_access_token、查询用户信息、发送消息
@@ -240,16 +241,6 @@ class FeishuService {
 
   // ============ 后台 isolate 专用 ============
 
-  /// SharedPreferences key 常量(与 StorageService 保持一致)
-  static const _kFeishuAppId = 'feishuAppId';
-  static const _kFeishuAppSecret = 'feishuAppSecret';
-  static const _kFeishuOpenId = 'feishuOpenId';
-  static const _kFeishuPushEnabled = 'feishuPushEnabled';
-  static const _kFeishuPushText = 'feishuPushText';
-  static const _kFeishuPushOnReminder = 'feishuPushOnReminder';
-  static const _kRecords = 'records';
-  static const _kProfile = 'profile';
-
   /// 后台闹钟触发时调用:发送飞书消息
   /// DND/时段/重复周期检查已由 NotificationService.onAlarmFired 完成
   /// 本方法仅负责凭证检查和消息发送,全程不依赖 AppState/Provider
@@ -266,23 +257,23 @@ class FeishuService {
       await prefs.reload();
 
       // 1. 检查推送是否开启(默认 true,避免旧版本升级后值缺失导致推送失效)
-      final pushEnabled = prefs.getBool(_kFeishuPushEnabled) ?? true;
+      final pushEnabled = prefs.getBool(StorageService.kFeishuPushEnabled) ?? true;
       if (!pushEnabled) {
         debugPrint('[FeishuPush] 推送已关闭,跳过');
         return;
       }
 
       // 2. 检查提醒时推送是否开启
-      final pushOnReminder = prefs.getBool(_kFeishuPushOnReminder) ?? true;
+      final pushOnReminder = prefs.getBool(StorageService.kFeishuPushOnReminder) ?? true;
       if (!pushOnReminder) {
         debugPrint('[FeishuPush] 提醒推送已关闭,跳过');
         return;
       }
 
       // 3. 获取凭证(仅使用用户本地配置)
-      final appId = prefs.getString(_kFeishuAppId);
-      final appSecret = prefs.getString(_kFeishuAppSecret);
-      final openId = prefs.getString(_kFeishuOpenId);
+      final appId = prefs.getString(StorageService.kFeishuAppId);
+      final appSecret = prefs.getString(StorageService.kFeishuAppSecret);
+      final openId = prefs.getString(StorageService.kFeishuOpenId);
       if (appId == null || appId.isEmpty) {
         debugPrint('[FeishuPush] appId 缺失,跳过');
         return;
@@ -373,11 +364,11 @@ class FeishuService {
 
   /// 构建提醒消息,包含今日喝水统计
   static String _buildReminderMessage(SharedPreferences prefs) {
-    final pushText = prefs.getString(_kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧';
+    final pushText = prefs.getString(StorageService.kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧';
 
     // 读取昵称
     String nickname = '';
-    final profileStr = prefs.getString(_kProfile);
+    final profileStr = prefs.getString(StorageService.kProfile);
     if (profileStr != null) {
       try {
         final p = jsonDecode(profileStr) as Map<String, dynamic>;
@@ -400,7 +391,7 @@ class FeishuService {
   static (int total, int goal) _loadTodayStats(SharedPreferences prefs) {
     // 读取每日目标
     int goal = 2000;
-    final profileStr = prefs.getString(_kProfile);
+    final profileStr = prefs.getString(StorageService.kProfile);
     if (profileStr != null) {
       try {
         final p = jsonDecode(profileStr) as Map<String, dynamic>;
@@ -410,7 +401,7 @@ class FeishuService {
 
     // 读取记录并计算今日总量
     int total = 0;
-    final recordsStr = prefs.getString(_kRecords);
+    final recordsStr = prefs.getString(StorageService.kRecords);
     if (recordsStr != null) {
       try {
         final list = jsonDecode(recordsStr) as List;
@@ -438,9 +429,9 @@ class FeishuService {
   /// 仅检查本地是否已保存 App ID / Secret / open_id
   static Future<bool> isConfigured() async {
     final prefs = await SharedPreferences.getInstance();
-    final appId = prefs.getString(_kFeishuAppId);
-    final appSecret = prefs.getString(_kFeishuAppSecret);
-    final openId = prefs.getString(_kFeishuOpenId);
+    final appId = prefs.getString(StorageService.kFeishuAppId);
+    final appSecret = prefs.getString(StorageService.kFeishuAppSecret);
+    final openId = prefs.getString(StorageService.kFeishuOpenId);
     return appId != null &&
         appId.isNotEmpty &&
         appSecret != null &&

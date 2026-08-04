@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../theme/app_colors.dart';
 import '../services/notification_service.dart';
 import '../services/alarm_service.dart';
+import '../services/storage_service.dart';
 import '../state/app_state.dart';
 import 'reminder/reminder_page.dart';
 import 'account/account_page.dart';
@@ -92,10 +93,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// 首次启动检查:若未弹过通知权限提醒且未授权,弹窗引导
   Future<void> _checkFirstLaunchNotification() async {
     final prefs = await SharedPreferences.getInstance();
-    final hasPrompted = prefs.getBool('hasPromptedNotification') ?? false;
+    final hasPrompted =
+        prefs.getBool(StorageService.kHasPromptedNotification) ?? false;
     if (hasPrompted) return;
     // 标记已弹过(无论用户选择)
-    await prefs.setBool('hasPromptedNotification', true);
+    await prefs.setBool(StorageService.kHasPromptedNotification, true);
     if (!mounted) return;
     final s = context.read<AppState>();
     if (s.notificationGranted) return;

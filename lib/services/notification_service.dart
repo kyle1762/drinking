@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'feishu_service.dart';
+import 'storage_service.dart';
 
 /// 通知服务 - 基于 flutter_local_notifications
 /// 负责通知渠道创建、权限请求、通知弹出
@@ -18,16 +19,6 @@ class NotificationService {
   static const String channelId = 'drinking_reminder_v3';
   static const String channelName = '喝水小精灵提醒';
   static const String channelDesc = '温柔的喝水小精灵提醒通知';
-
-  // SharedPreferences key 常量(与 StorageService 保持一致)
-  static const _kNightDnd = 'nightDnd';
-  static const _kNoonDnd = 'noonDnd';
-  static const _kRepeat = 'repeat';
-
-  // 今日提醒次数持久化 key
-  static const _kTodayReminderCount = 'todayReminderCount';
-  static const _kTodayReminderDate = 'todayReminderDate';
-  static const _kLastReminderTime = 'lastReminderTime';
 
   /// 初始化插件与通知渠道
   static Future<void> init() async {
@@ -229,22 +220,22 @@ class NotificationService {
   static Future<void> _recordReminderFired(SharedPreferences prefs) async {
     final today = DateTime.now();
     final todayStr = '${today.year}-${today.month}-${today.day}';
-    final savedDate = prefs.getString(_kTodayReminderDate);
-    int count = prefs.getInt(_kTodayReminderCount) ?? 0;
+    final savedDate = prefs.getString(StorageService.kTodayReminderDate);
+    int count = prefs.getInt(StorageService.kTodayReminderCount) ?? 0;
     // 日期变更则重置计数
     if (savedDate != todayStr) {
       count = 0;
     }
     count++;
-    await prefs.setInt(_kTodayReminderCount, count);
-    await prefs.setString(_kTodayReminderDate, todayStr);
-    await prefs.setString(_kLastReminderTime, today.toIso8601String());
+    await prefs.setInt(StorageService.kTodayReminderCount, count);
+    await prefs.setString(StorageService.kTodayReminderDate, todayStr);
+    await prefs.setString(StorageService.kLastReminderTime, today.toIso8601String());
   }
 
   /// 检查当前是否处于免打扰时段
   static bool _isInDndPeriod(SharedPreferences prefs) {
-    final nightDnd = prefs.getBool(_kNightDnd) ?? true;
-    final noonDnd = prefs.getBool(_kNoonDnd) ?? false;
+    final nightDnd = prefs.getBool(StorageService.kNightDnd) ?? true;
+    final noonDnd = prefs.getBool(StorageService.kNoonDnd) ?? false;
 
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
@@ -258,7 +249,7 @@ class NotificationService {
 
   /// 检查今天是否属于重复周期
   static bool _isRepeatDay(SharedPreferences prefs) {
-    final repeatIndex = prefs.getInt(_kRepeat) ?? 0;
+    final repeatIndex = prefs.getInt(StorageService.kRepeat) ?? 0;
     final weekday = DateTime.now().weekday;
 
     switch (repeatIndex) {

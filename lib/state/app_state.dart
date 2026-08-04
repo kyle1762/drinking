@@ -60,22 +60,14 @@ class AppState extends ChangeNotifier {
 
   // ============ 提醒设置 ============
   bool _reminderEnabled = true;
-  bool _isLoopTab = true; // 循环/单次标签
   int _loopInterval = 60; // 分钟
   final List<SingleReminder> _singleReminders = [];
-  String _rangeStart = '08:00';
-  String _rangeEnd = '21:00';
-  RepeatCycle _repeat = RepeatCycle.daily;
   bool _reminderPaused = false;
 
   bool get reminderEnabled => _reminderEnabled;
-  bool get isLoopTab => _isLoopTab;
   int get loopInterval => _loopInterval;
   List<SingleReminder> get singleReminders =>
       List.unmodifiable(_singleReminders);
-  String get rangeStart => _rangeStart;
-  String get rangeEnd => _rangeEnd;
-  RepeatCycle get repeat => _repeat;
   bool get reminderPaused => _reminderPaused;
 
   /// 今日已提醒次数(从 SharedPreferences 同步,后台 isolate 也能写入)
@@ -94,10 +86,10 @@ class AppState extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final today = DateTime.now();
       final todayStr = '${today.year}-${today.month}-${today.day}';
-      final savedDateStr = prefs.getString('todayReminderDate');
-      final count = prefs.getInt('todayReminderCount') ?? 0;
-      final lastStr = prefs.getString('lastReminderTime');
-      final nextStr = prefs.getString('nextAlarmTime');
+      final savedDateStr = prefs.getString(StorageService.kTodayReminderDate);
+      final count = prefs.getInt(StorageService.kTodayReminderCount) ?? 0;
+      final lastStr = prefs.getString(StorageService.kLastReminderTime);
+      final nextStr = prefs.getString(StorageService.kNextAlarmTime);
 
       // 日期变更则重置
       if (savedDateStr != todayStr) {
@@ -111,10 +103,6 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     });
   }
-
-  /// 喝水动画触发计数器 - 每次 addRecord 自增,小人组件监听此值触发喝水动画
-  int _drinkPulse = 0;
-  int get drinkPulse => _drinkPulse;
 
   /// 下次提醒时间
   /// 优先使用 AlarmService 写入的精确闹钟时间(实时同步),无则回退到计算值
@@ -133,17 +121,6 @@ class AppState extends ChangeNotifier {
     return '${actualNext.hour.toString().padLeft(2, '0')}:${actualNext.minute.toString().padLeft(2, '0')}';
   }
 
-  // ============ 耳机专属设置 ============
-  bool _earphoneEnabled = true;
-  SoundType _sound = SoundType.flow;
-  double _earphoneVolume = 0.6;
-  bool _earphoneConnected = false;
-
-  bool get earphoneEnabled => _earphoneEnabled;
-  SoundType get sound => _sound;
-  double get earphoneVolume => _earphoneVolume;
-  bool get earphoneConnected => _earphoneConnected;
-
   // ============ 飞书推送 ============
   bool _feishuPushEnabled = false;
   String _feishuPushText = '到时间啦~ 起身动动,接杯水喝一口吧';
@@ -159,18 +136,10 @@ class AppState extends ChangeNotifier {
   bool _nightDnd = true;
   bool _noonDnd = false; // 默认关闭,首启时主动询问用户
   bool _hasPromptedNoonDnd = false; // 是否已弹过午休免打扰询问
-  int? _focusMinutes; // 专注模式剩余分钟,null=未开启
 
   bool get nightDnd => _nightDnd;
   bool get noonDnd => _noonDnd;
   bool get hasPromptedNoonDnd => _hasPromptedNoonDnd;
-  bool get focusModeActive => _focusMinutes != null;
-  int? get focusMinutes => _focusMinutes;
-
-  // ============ 扬声器提醒 ============
-  /// 是否通过手机扬声器播放提醒音效(用户可自行关闭)
-  bool _speakerEnabled = true;
-  bool get speakerEnabled => _speakerEnabled;
 
   // ============ 喝水记录 ============
   final List<WaterRecord> _records = [];
@@ -290,52 +259,6 @@ class AppState extends ChangeNotifier {
     return _exerciseRecords
         .where((r) => r.time.isAfter(startOfWeek))
         .fold(0, (s, r) => s + r.calories);
-  }
-
-  /// 本周累计净消耗热量(周一至今天)
-  /// = 每日日消耗(运动消耗 + BMR - 摄入)的累计总和
-  /// 今日日消耗实时计算,历史日运动消耗从 _exerciseRecords 直接聚合(保留60天),
-  /// 食物摄入从 DailyDietSummary 读取(食物记录每日清空)
-  /// 未填全个人信息时返回 null
-  int? get thisWeekNetBurnCalories {
-    final bmr = _profile.bmr;
-    if (bmr == null) return null;
-    final now = DateTime.now();
-    final weekDay = now.weekday; // 周一=1...周日=7
-    final monday = now.subtract(Duration(days: weekDay - 1));
-    final startOfWeek = DateTime(monday.year, monday.month, monday.day);
-
-    int total = 0;
-    // 今日日消耗 = 今日运动消耗 + BMR - 今日摄入
-    total += todayExerciseCalories + bmr - todayFoodCalories;
-
-    // 遍历本周已过去的历史日(周一到昨天)
-    for (int i = 0; i < weekDay - 1; i++) {
-      final day = startOfWeek.add(Duration(days: i));
-      // 该日运动消耗(直接从运动记录聚合,运动记录不清空)
-      final exerciseCal = _exerciseRecords
-          .where((r) =>
-              r.time.year == day.year &&
-              r.time.month == day.month &&
-              r.time.day == day.day)
-          .fold(0, (s, r) => s + r.calories);
-      // 该日食物摄入(从 DailyDietSummary 读取,食物记录每日清空)
-      final dayKey = '${day.year}-${day.month}-${day.day}';
-      final summary = _dailyDietSummaries.firstWhere(
-        (s) => '${s.date.year}-${s.date.month}-${s.date.day}' == dayKey,
-        orElse: () => DailyDietSummary(
-            date: DateTime(2000),
-            calories: 0,
-            exerciseCalories: 0,
-            protein: 0,
-            fat: 0,
-            carbs: 0,
-            fiber: 0,
-            foodNames: const []),
-      );
-      total += exerciseCal + bmr - summary.calories;
-    }
-    return total;
   }
 
   // ============ 饮食建议(增肌/减脂/保持) ============
@@ -603,17 +526,10 @@ class AppState extends ChangeNotifier {
     _profile = d.profile;
     _notificationGranted = d.notificationGranted;
     _reminderEnabled = d.reminderEnabled;
-    _isLoopTab = d.isLoopTab;
     _loopInterval = d.loopInterval;
     _singleReminders
       ..clear()
       ..addAll(d.singleReminders.where((r) => !r.isExpired));
-    _rangeStart = d.rangeStart;
-    _rangeEnd = d.rangeEnd;
-    _repeat = RepeatCycle.values[d.repeatIndex.clamp(0, 2)];
-    _earphoneEnabled = d.earphoneEnabled;
-    _sound = d.sound;
-    _earphoneVolume = d.earphoneVolume;
     _feishuPushEnabled = d.feishuPushEnabled;
     _feishuPushText = d.feishuPushText;
     _feishuPushOnReminder = d.feishuPushOnReminder;
@@ -621,7 +537,6 @@ class AppState extends ChangeNotifier {
     _nightDnd = d.nightDnd;
     _noonDnd = d.noonDnd;
     _hasPromptedNoonDnd = d.hasPromptedNoonDnd;
-    _speakerEnabled = d.speakerEnabled;
     _rememberSyncToFeishu = d.rememberSyncFeishu;
     // 仅加载最近 60 天的记录,避免无限增长
     final cutoff = DateTime.now().subtract(const Duration(days: 60));
@@ -964,12 +879,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setLoopTab(bool v) {
-    _isLoopTab = v;
-    StorageService.saveIsLoopTab(v);
-    notifyListeners();
-  }
-
   void setLoopInterval(int minutes) {
     _loopInterval = minutes;
     StorageService.saveLoopInterval(minutes);
@@ -1010,53 +919,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setRange(String start, String end) {
-    _rangeStart = start;
-    _rangeEnd = end;
-    StorageService.saveRange(start, end);
-    notifyListeners();
-  }
-
-  void setRepeat(RepeatCycle r) {
-    _repeat = r;
-    StorageService.saveRepeat(r.index);
-    notifyListeners();
-  }
-
-  /// 智能作息填充 - 读取账号页作息
-  void applyScheduleFromProfile() {
-    _rangeStart = _profile.wakeTime;
-    _rangeEnd = _profile.bedTime;
-    StorageService.saveRange(_rangeStart, _rangeEnd);
-    notifyListeners();
-  }
-
   void togglePauseToday() {
     _reminderPaused = !_reminderPaused;
-    notifyListeners();
-  }
-
-  // ---- 耳机 ----
-  void setEarphoneEnabled(bool v) {
-    _earphoneEnabled = v;
-    StorageService.saveEarphoneEnabled(v);
-    notifyListeners();
-  }
-
-  void setSound(SoundType s) {
-    _sound = s;
-    StorageService.saveSound(s.name);
-    notifyListeners();
-  }
-
-  void setEarphoneVolume(double v) {
-    _earphoneVolume = v;
-    StorageService.saveEarphoneVolume(v);
-    notifyListeners();
-  }
-
-  void setEarphoneConnected(bool v) {
-    _earphoneConnected = v;
     notifyListeners();
   }
 
@@ -1161,23 +1025,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---- 扬声器提醒 ----
-  void setSpeakerEnabled(bool v) {
-    _speakerEnabled = v;
-    StorageService.saveSpeakerEnabled(v);
-    notifyListeners();
-  }
-
-  void startFocusMode(int minutes) {
-    _focusMinutes = minutes;
-    notifyListeners();
-  }
-
-  void stopFocusMode() {
-    _focusMinutes = null;
-    notifyListeners();
-  }
-
   // ---- 喝水记录 ----
   void addRecord(int amount) {
     _records.insert(
@@ -1188,7 +1035,6 @@ class AppState extends ChangeNotifier {
           amount: amount,
         ));
     StorageService.saveRecords(_records);
-    _drinkPulse++;
     notifyListeners();
   }
 
@@ -1202,7 +1048,6 @@ class AppState extends ChangeNotifier {
     if (_records.isNotEmpty) {
       _records.removeAt(0);
       StorageService.saveRecords(_records);
-      _drinkPulse++;
       notifyListeners();
     }
   }
@@ -1250,7 +1095,6 @@ class AppState extends ChangeNotifier {
     if (_nightDnd && (hm >= 22 * 60 || hm < 8 * 60)) return true;
     // 午休免打扰:12:30 ~ 14:30
     if (_noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return true;
-    if (_focusMinutes != null) return true;
     return false;
   }
 
@@ -1258,7 +1102,6 @@ class AppState extends ChangeNotifier {
   String get dndStatusText {
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
-    if (_focusMinutes != null) return '专注模式中';
     if (_nightDnd && (hm >= 22 * 60 || hm < 8 * 60)) return '夜间免打扰';
     if (_noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return '午休免打扰';
     return '';

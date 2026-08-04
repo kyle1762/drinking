@@ -1,7 +1,7 @@
 name: drinking
 description: 喝水小精灵 - 治愈奶油风喝水提醒
 publish_to: 'none'
-version: 2.0.0+10
+version: 2.0.4+11
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -20,9 +20,6 @@ dependencies:
 
   # 通知
   flutter_local_notifications: ^17.2.1
-
-  # 音频播放(耳机路由)
-  audioplayers: ^6.0.0
 
   # 图表
   fl_chart: ^0.68.0
@@ -70,7 +67,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
-  # 治愈音效资源(需将 mp3 文件放入 assets/sounds/)
-  assets:
-    - assets/sounds/

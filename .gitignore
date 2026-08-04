@@ -11,7 +11,7 @@ build/
 /android/app/profile
 /android/app/release
 
-# 临时脚本与工具
+# 临时脚本与工具(大多收拢至 tools/,规则按文件名匹配任意层级)
 .agents/
 apk_share/
 cloudflared.exe
@@ -24,3 +24,4 @@ new_entries_dart.txt
 script_output.txt
 stderr.txt
 stdout.txt
+*.xlsx

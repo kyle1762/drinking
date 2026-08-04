@@ -12,31 +12,6 @@ enum AccountState {
   boundFeishu,
 }
 
-/// 提醒音效
-/// 风铃音效已更换为 wind_chime.wav(更清脆悦耳)
-/// 请将新的风铃音频文件放入 assets/sounds/wind_chime.wav
-enum SoundType {
-  flow('流水', 'flow.wav'),
-  windChime('风铃', 'wind_chime.wav'),
-  rainDrop('雨滴', 'rain.wav'),
-  piano('轻钢琴', 'piano.wav');
-
-  const SoundType(this.label, this.file);
-  final String label;
-  final String file;
-
-  /// 从名称解析音效枚举(持久化反序列化用)
-  static SoundType fromName(String? name) {
-    return SoundType.values.firstWhere(
-      (e) => e.name == name,
-      orElse: () => SoundType.flow,
-    );
-  }
-}
-
-/// 重复周期
-enum RepeatCycle { daily, weekday, weekend }
-
 /// 单次提醒任务
 class SingleReminder {
   SingleReminder({

@@ -29,11 +29,8 @@ class AiService {
 
   // ========== API Key 管理 ==========
 
-  /// 获取已保存的 API Key
-  static String get apiKey {
-    final d = StorageService.loadAll();
-    return d.aiApiKey;
-  }
+  /// 获取已保存的 API Key(直接读取单 key,避免反序列化全部配置)
+  static String get apiKey => StorageService.getAiApiKey();
 
   /// 保存 API Key
   static Future<void> saveApiKey(String key) async {
@@ -528,7 +525,7 @@ class AiService {
       final base64Image = base64Encode(bytes);
       final imageUrl = 'data:image/jpeg;base64,$base64Image';
 
-      final prompt = '请识别这张图片中的身体数据(体测报告/体脂秤屏幕/健康报告等)。'
+      const prompt = '请识别这张图片中的身体数据(体测报告/体脂秤屏幕/健康报告等)。'
           '返回纯JSON格式(不要markdown标记):\n'
           '{"height":身高cm数值,"weight":体重kg数值,"muscle":肌肉量kg数值}\n'
           '注意:所有数值为纯数字(可为小数);若图片中某项数据无法识别,该项填0。';

@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../data/food_nutrition.dart';
@@ -21,55 +21,56 @@ class StorageService {
   }
 
   // ============ Key 常量 ============
-  static const _kAccountState = 'accountState';
-  static const _kPhone = 'phone';
-  static const _kFeishuName = 'feishuName';
-  static const _kFeishuAppId = 'feishuAppId';
-  static const _kFeishuAppSecret = 'feishuAppSecret';
-  static const _kFeishuOpenId = 'feishuOpenId';
-  static const _kProfile = 'profile';
-  static const _kNotificationGranted = 'notificationGranted';
-  static const _kReminderEnabled = 'reminderEnabled';
-  static const _kIsLoopTab = 'isLoopTab';
-  static const _kLoopInterval = 'loopInterval';
-  static const _kSingleReminders = 'singleReminders';
-  static const _kRangeStart = 'rangeStart';
-  static const _kRangeEnd = 'rangeEnd';
-  static const _kRepeat = 'repeat';
-  static const _kEarphoneEnabled = 'earphoneEnabled';
-  static const _kSound = 'sound';
-  static const _kEarphoneVolume = 'earphoneVolume';
-  static const _kFeishuPushEnabled = 'feishuPushEnabled';
-  static const _kFeishuPushText = 'feishuPushText';
-  static const _kFeishuPushOnReminder = 'feishuPushOnReminder';
-  static const _kFeishuPushOnPunch = 'feishuPushOnPunch';
-  static const _kNightDnd = 'nightDnd';
-  static const _kNoonDnd = 'noonDnd';
-  static const _kRememberSyncFeishu = 'rememberSyncFeishu';
-  static const _kRecords = 'records';
-  static const _kAiApiKey = 'aiApiKey';
-  static const _kFoodRecords = 'foodRecords';
-  static const _kExerciseRecords = 'exerciseRecords';
-  static const _kWeeklyRecords = 'weeklyRecords';
-  static const _kLastFoodClearDate = 'lastFoodClearDate';
-  static const _kCustomFoodNutrition = 'customFoodNutrition';
-  // 扬声器提醒开关(新增,默认 true;兼容旧版 earphoneEnabled)
-  static const _kSpeakerEnabled = 'speakerEnabled';
-  static const _kLegacyEarphoneEnabled = 'earphoneEnabled';
+  static const kAccountState = 'accountState';
+  static const kPhone = 'phone';
+  static const kFeishuName = 'feishuName';
+  static const kFeishuAppId = 'feishuAppId';
+  static const kFeishuAppSecret = 'feishuAppSecret';
+  static const kFeishuOpenId = 'feishuOpenId';
+  static const kProfile = 'profile';
+  static const kNotificationGranted = 'notificationGranted';
+  static const kReminderEnabled = 'reminderEnabled';
+  static const kLoopInterval = 'loopInterval';
+  static const kSingleReminders = 'singleReminders';
+  static const kRepeat = 'repeat';
+  static const kFeishuPushEnabled = 'feishuPushEnabled';
+  static const kFeishuPushText = 'feishuPushText';
+  static const kFeishuPushOnReminder = 'feishuPushOnReminder';
+  static const kFeishuPushOnPunch = 'feishuPushOnPunch';
+  static const kNightDnd = 'nightDnd';
+  static const kNoonDnd = 'noonDnd';
+  static const kRememberSyncFeishu = 'rememberSyncFeishu';
+  static const kRecords = 'records';
+  static const kAiApiKey = 'aiApiKey';
+  static const kFoodRecords = 'foodRecords';
+  static const kExerciseRecords = 'exerciseRecords';
+  static const kWeeklyRecords = 'weeklyRecords';
+  static const kLastFoodClearDate = 'lastFoodClearDate';
+  static const kCustomFoodNutrition = 'customFoodNutrition';
   // 午休免打扰首启询问标记
-  static const _kHasPromptedNoonDnd = 'hasPromptedNoonDnd';
+  static const kHasPromptedNoonDnd = 'hasPromptedNoonDnd';
   // 上次提醒更新个人信息的日期(每日首次进入热量追踪页提醒)
-  static const _kLastProfileRemindDate = 'lastProfileRemindDate';
+  static const kLastProfileRemindDate = 'lastProfileRemindDate';
   // 日历事件追踪(批量添加后记录 eventId,供一键清除使用)
-  static const _kCalendarEventIds = 'calendarEventIds';
+  static const kCalendarEventIds = 'calendarEventIds';
   // 闹钟时间追踪(批量添加后记录时间,供一键清除提示)
-  static const _kAlarmTimes = 'alarmTimes';
+  static const kAlarmTimes = 'alarmTimes';
   // 每日饮食摘要历史(每日清空食物记录前保存,供 AI 分析近期饮食)
-  static const _kDailyDietSummaries = 'dailyDietSummaries';
+  static const kDailyDietSummaries = 'dailyDietSummaries';
   // 当前 AI 饮食建议(含建议摄入量,可被动态调整)
-  static const _kDietAdvice = 'dietAdvice';
+  static const kDietAdvice = 'dietAdvice';
   // 用户保存的菜品配方(菜名 -> 食材及占比列表,永久记录供下次直接使用)
-  static const _kDishRecipes = 'dishRecipes';
+  static const kDishRecipes = 'dishRecipes';
+  // 下次循环提醒的绝对时间(ISO8601)
+  static const kNextAlarmTime = 'nextAlarmTime';
+  // 提醒暂停开关(临时暂停全局提醒)
+  static const kReminderPaused = 'reminderPaused';
+  // 今日已触发提醒次数计数(跨天重置)
+  static const kTodayReminderCount = 'todayReminderCount';
+  static const kTodayReminderDate = 'todayReminderDate';
+  static const kLastReminderTime = 'lastReminderTime';
+  // 是否已询问过通知权限(首启引导)
+  static const kHasPromptedNotification = 'hasPromptedNotification';
 
   // ============ 菜品配方(永久保存的食材占比) ============
 
@@ -77,13 +78,13 @@ class StorageService {
   static Future<void> saveDishRecipe(String dishName, List<FoodIngredient> ingredients) async {
     final all = loadAllDishRecipes();
     all[dishName] = ingredients;
-    await _p.setString(_kDishRecipes,
+    await _p.setString(kDishRecipes,
         jsonEncode(all.map((k, v) => MapEntry(k, v.map((e) => e.toJson()).toList()))));
   }
 
   /// 加载全部菜品配方
   static Map<String, List<FoodIngredient>> loadAllDishRecipes() {
-    final s = _p.getString(_kDishRecipes);
+    final s = _p.getString(kDishRecipes);
     if (s == null) return {};
     try {
       final map = jsonDecode(s) as Map<String, dynamic>;
@@ -106,18 +107,18 @@ class StorageService {
   }
 
   // 用户保存的运动单次热量(运动名 -> kcal/次,永久记录供下次直接使用)
-  static const _kExerciseCalories = 'exerciseCalories';
+  static const kExerciseCalories = 'exerciseCalories';
 
   /// 保存单个运动的单次热量(运动名 -> kcal/次),覆盖同名旧记录
   static Future<void> saveExerciseCalorie(String name, double kcalPerRep) async {
     final all = loadAllExerciseCalories();
     all[name] = kcalPerRep;
-    await _p.setString(_kExerciseCalories, jsonEncode(all));
+    await _p.setString(kExerciseCalories, jsonEncode(all));
   }
 
   /// 加载全部运动单次热量
   static Map<String, double> loadAllExerciseCalories() {
-    final s = _p.getString(_kExerciseCalories);
+    final s = _p.getString(kExerciseCalories);
     if (s == null) return {};
     try {
       final map = jsonDecode(s) as Map<String, dynamic>;
@@ -140,52 +141,40 @@ class StorageService {
   /// 从磁盘读取全部状态,返回一个 Map,供 AppState.bootstrap 使用
   static StoredData loadAll() {
     final p = _p;
-    // 扬声器开关:优先读新 key,无则回退到旧 earphoneEnabled,默认 true
-    final speaker = p.getBool(_kSpeakerEnabled) ??
-        p.getBool(_kLegacyEarphoneEnabled) ??
-        true;
     return StoredData(
-      accountStateIndex: p.getInt(_kAccountState) ?? 0,
-      phone: p.getString(_kPhone) ?? '',
-      feishuName: p.getString(_kFeishuName) ?? '',
-      feishuAppId: p.getString(_kFeishuAppId) ?? '',
-      feishuAppSecret: p.getString(_kFeishuAppSecret) ?? '',
-      feishuOpenId: p.getString(_kFeishuOpenId) ?? '',
+      accountStateIndex: p.getInt(kAccountState) ?? 0,
+      phone: p.getString(kPhone) ?? '',
+      feishuName: p.getString(kFeishuName) ?? '',
+      feishuAppId: p.getString(kFeishuAppId) ?? '',
+      feishuAppSecret: p.getString(kFeishuAppSecret) ?? '',
+      feishuOpenId: p.getString(kFeishuOpenId) ?? '',
       profile: _loadProfile(),
-      notificationGranted: p.getBool(_kNotificationGranted) ?? false,
-      reminderEnabled: p.getBool(_kReminderEnabled) ?? true,
-      isLoopTab: p.getBool(_kIsLoopTab) ?? true,
-      loopInterval: p.getInt(_kLoopInterval) ?? 60,
+      notificationGranted: p.getBool(kNotificationGranted) ?? false,
+      reminderEnabled: p.getBool(kReminderEnabled) ?? true,
+      loopInterval: p.getInt(kLoopInterval) ?? 60,
       singleReminders: _loadSingleReminders(),
-      rangeStart: p.getString(_kRangeStart) ?? '08:00',
-      rangeEnd: p.getString(_kRangeEnd) ?? '21:00',
-      repeatIndex: p.getInt(_kRepeat) ?? 0,
-      earphoneEnabled: p.getBool(_kEarphoneEnabled) ?? true,
-      sound: SoundType.fromName(p.getString(_kSound)),
-      earphoneVolume: p.getDouble(_kEarphoneVolume) ?? 0.6,
-      feishuPushEnabled: p.getBool(_kFeishuPushEnabled) ?? false,
-      feishuPushText: p.getString(_kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧',
-      feishuPushOnReminder: p.getBool(_kFeishuPushOnReminder) ?? true,
-      feishuPushOnPunch: p.getBool(_kFeishuPushOnPunch) ?? false,
-      nightDnd: p.getBool(_kNightDnd) ?? true,
+      feishuPushEnabled: p.getBool(kFeishuPushEnabled) ?? false,
+      feishuPushText: p.getString(kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧',
+      feishuPushOnReminder: p.getBool(kFeishuPushOnReminder) ?? true,
+      feishuPushOnPunch: p.getBool(kFeishuPushOnPunch) ?? false,
+      nightDnd: p.getBool(kNightDnd) ?? true,
       // 午休免打扰默认关闭,首启时主动询问用户
-      noonDnd: p.getBool(_kNoonDnd) ?? false,
-      hasPromptedNoonDnd: p.getBool(_kHasPromptedNoonDnd) ?? false,
-      rememberSyncFeishu: p.getBool(_kRememberSyncFeishu) ?? true,
+      noonDnd: p.getBool(kNoonDnd) ?? false,
+      hasPromptedNoonDnd: p.getBool(kHasPromptedNoonDnd) ?? false,
+      rememberSyncFeishu: p.getBool(kRememberSyncFeishu) ?? true,
       records: _loadRecords(),
-      aiApiKey: p.getString(_kAiApiKey) ?? '',
+      aiApiKey: p.getString(kAiApiKey) ?? '',
       foodRecords: _loadFoodRecords(),
       exerciseRecords: _loadExerciseRecords(),
       weeklyRecords: _loadWeeklyRecords(),
-      lastFoodClearDate: p.getString(_kLastFoodClearDate) ?? '',
-      speakerEnabled: speaker,
+      lastFoodClearDate: p.getString(kLastFoodClearDate) ?? '',
       dailyDietSummaries: loadDailyDietSummaries(),
       dietAdvice: loadDietAdvice(),
     );
   }
 
   static UserProfile _loadProfile() {
-    final s = _p.getString(_kProfile);
+    final s = _p.getString(kProfile);
     if (s == null) return const UserProfile();
     try {
       return UserProfile.fromJson(jsonDecode(s) as Map<String, dynamic>);
@@ -195,7 +184,7 @@ class StorageService {
   }
 
   static List<SingleReminder> _loadSingleReminders() {
-    final s = _p.getString(_kSingleReminders);
+    final s = _p.getString(kSingleReminders);
     if (s == null) return [];
     try {
       final list = jsonDecode(s) as List;
@@ -208,7 +197,7 @@ class StorageService {
   }
 
   static List<WaterRecord> _loadRecords() {
-    final s = _p.getString(_kRecords);
+    final s = _p.getString(kRecords);
     if (s == null) return [];
     try {
       final list = jsonDecode(s) as List;
@@ -221,7 +210,7 @@ class StorageService {
   }
 
   static List<FoodRecord> _loadFoodRecords() {
-    final s = _p.getString(_kFoodRecords);
+    final s = _p.getString(kFoodRecords);
     if (s == null) return [];
     try {
       final list = jsonDecode(s) as List;
@@ -234,7 +223,7 @@ class StorageService {
   }
 
   static List<ExerciseRecord> _loadExerciseRecords() {
-    final s = _p.getString(_kExerciseRecords);
+    final s = _p.getString(kExerciseRecords);
     if (s == null) return [];
     try {
       final list = jsonDecode(s) as List;
@@ -247,7 +236,7 @@ class StorageService {
   }
 
   static List<WeeklyRecord> _loadWeeklyRecords() {
-    final s = _p.getString(_kWeeklyRecords);
+    final s = _p.getString(kWeeklyRecords);
     if (s == null) return [];
     try {
       final list = jsonDecode(s) as List;
@@ -261,61 +250,49 @@ class StorageService {
 
   // ============ 保存单项 ============
   static Future<void> saveAccountState(int index) =>
-      _p.setInt(_kAccountState, index);
-  static Future<void> savePhone(String v) => _p.setString(_kPhone, v);
-  static Future<void> saveFeishuName(String v) => _p.setString(_kFeishuName, v);
+      _p.setInt(kAccountState, index);
+  static Future<void> savePhone(String v) => _p.setString(kPhone, v);
+  static Future<void> saveFeishuName(String v) => _p.setString(kFeishuName, v);
   static Future<void> saveFeishuAppId(String v) =>
-      _p.setString(_kFeishuAppId, v);
+      _p.setString(kFeishuAppId, v);
   static Future<void> saveFeishuAppSecret(String v) =>
-      _p.setString(_kFeishuAppSecret, v);
+      _p.setString(kFeishuAppSecret, v);
   static Future<void> saveFeishuOpenId(String v) =>
-      _p.setString(_kFeishuOpenId, v);
+      _p.setString(kFeishuOpenId, v);
   static Future<void> saveProfile(UserProfile p) =>
-      _p.setString(_kProfile, jsonEncode(p.toJson()));
+      _p.setString(kProfile, jsonEncode(p.toJson()));
   static Future<void> saveNotificationGranted(bool v) =>
-      _p.setBool(_kNotificationGranted, v);
+      _p.setBool(kNotificationGranted, v);
   static Future<void> saveReminderEnabled(bool v) =>
-      _p.setBool(_kReminderEnabled, v);
-  static Future<void> saveIsLoopTab(bool v) => _p.setBool(_kIsLoopTab, v);
-  static Future<void> saveLoopInterval(int v) => _p.setInt(_kLoopInterval, v);
+      _p.setBool(kReminderEnabled, v);
+  static Future<void> saveLoopInterval(int v) => _p.setInt(kLoopInterval, v);
   static Future<void> saveSingleReminders(List<SingleReminder> list) =>
       _p.setString(
-          _kSingleReminders, jsonEncode(list.map((e) => e.toJson()).toList()));
-  static Future<void> saveRange(String start, String end) {
-    _p.setString(_kRangeStart, start);
-    return _p.setString(_kRangeEnd, end);
-  }
-
-  static Future<void> saveRepeat(int index) => _p.setInt(_kRepeat, index);
-  static Future<void> saveEarphoneEnabled(bool v) =>
-      _p.setBool(_kEarphoneEnabled, v);
-  static Future<void> saveSound(String name) => _p.setString(_kSound, name);
-  static Future<void> saveEarphoneVolume(double v) =>
-      _p.setDouble(_kEarphoneVolume, v);
+          kSingleReminders, jsonEncode(list.map((e) => e.toJson()).toList()));
   static Future<void> saveFeishuPushEnabled(bool v) =>
-      _p.setBool(_kFeishuPushEnabled, v);
+      _p.setBool(kFeishuPushEnabled, v);
   static Future<void> saveFeishuPushText(String v) =>
-      _p.setString(_kFeishuPushText, v);
+      _p.setString(kFeishuPushText, v);
   static Future<void> saveFeishuPushFlags({bool? reminder, bool? punch}) {
-    if (reminder != null) _p.setBool(_kFeishuPushOnReminder, reminder);
-    if (punch != null) _p.setBool(_kFeishuPushOnPunch, punch);
+    if (reminder != null) _p.setBool(kFeishuPushOnReminder, reminder);
+    if (punch != null) _p.setBool(kFeishuPushOnPunch, punch);
     return Future.value();
   }
 
-  static Future<void> saveNightDnd(bool v) => _p.setBool(_kNightDnd, v);
-  static Future<void> saveNoonDnd(bool v) => _p.setBool(_kNoonDnd, v);
+  static Future<void> saveNightDnd(bool v) => _p.setBool(kNightDnd, v);
+  static Future<void> saveNoonDnd(bool v) => _p.setBool(kNoonDnd, v);
   static Future<void> saveHasPromptedNoonDnd(bool v) =>
-      _p.setBool(_kHasPromptedNoonDnd, v);
+      _p.setBool(kHasPromptedNoonDnd, v);
 
   /// 读取上次提醒更新个人信息的日期(yyyy-MM-dd)
   static String getLastProfileRemindDate() =>
-      _p.getString(_kLastProfileRemindDate) ?? '';
+      _p.getString(kLastProfileRemindDate) ?? '';
   static Future<void> saveLastProfileRemindDate(String date) =>
-      _p.setString(_kLastProfileRemindDate, date);
+      _p.setString(kLastProfileRemindDate, date);
 
   /// 日历事件追踪记录读写(批量添加日历事件后,记录 eventId 供一键清除)
   static List<CalendarEventRef> loadCalendarEventIds() {
-    final s = _p.getString(_kCalendarEventIds);
+    final s = _p.getString(kCalendarEventIds);
     if (s == null) return [];
     try {
       final list = jsonDecode(s) as List;
@@ -328,12 +305,12 @@ class StorageService {
   }
 
   static Future<void> saveCalendarEventIds(List<CalendarEventRef> list) =>
-      _p.setString(_kCalendarEventIds,
+      _p.setString(kCalendarEventIds,
           jsonEncode(list.map((e) => e.toJson()).toList()));
 
   /// 闹钟时间追踪记录读写(批量添加闹钟后,记录时间供一键清除提示)
   static List<AlarmTimeRecord> loadAlarmTimes() {
-    final s = _p.getString(_kAlarmTimes);
+    final s = _p.getString(kAlarmTimes);
     if (s == null) return [];
     try {
       final list = jsonDecode(s) as List;
@@ -347,11 +324,11 @@ class StorageService {
 
   static Future<void> saveAlarmTimes(List<AlarmTimeRecord> list) =>
       _p.setString(
-          _kAlarmTimes, jsonEncode(list.map((e) => e.toJson()).toList()));
+          kAlarmTimes, jsonEncode(list.map((e) => e.toJson()).toList()));
 
   /// 每日饮食摘要历史读写
   static List<DailyDietSummary> loadDailyDietSummaries() {
-    final s = _p.getString(_kDailyDietSummaries);
+    final s = _p.getString(kDailyDietSummaries);
     if (s == null) return [];
     try {
       final list = jsonDecode(s) as List;
@@ -364,12 +341,12 @@ class StorageService {
   }
 
   static Future<void> saveDailyDietSummaries(List<DailyDietSummary> list) =>
-      _p.setString(_kDailyDietSummaries,
+      _p.setString(kDailyDietSummaries,
           jsonEncode(list.map((e) => e.toJson()).toList()));
 
   /// 当前 AI 饮食建议读写
   static DietAdvice? loadDietAdvice() {
-    final s = _p.getString(_kDietAdvice);
+    final s = _p.getString(kDietAdvice);
     if (s == null) return null;
     try {
       return DietAdvice.fromJson(jsonDecode(s) as Map<String, dynamic>);
@@ -380,37 +357,36 @@ class StorageService {
 
   static Future<void> saveDietAdvice(DietAdvice? advice) {
     if (advice == null) {
-      return _p.remove(_kDietAdvice);
+      return _p.remove(kDietAdvice);
     }
-    return _p.setString(_kDietAdvice, jsonEncode(advice.toJson()));
+    return _p.setString(kDietAdvice, jsonEncode(advice.toJson()));
   }
-  static Future<void> saveSpeakerEnabled(bool v) =>
-      _p.setBool(_kSpeakerEnabled, v);
   static Future<void> saveRememberSyncFeishu(bool v) =>
-      _p.setBool(_kRememberSyncFeishu, v);
+      _p.setBool(kRememberSyncFeishu, v);
   static Future<void> saveRecords(List<WaterRecord> list) =>
-      _p.setString(_kRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
+      _p.setString(kRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
 
-  static Future<void> saveAiApiKey(String v) => _p.setString(_kAiApiKey, v);
+  static Future<void> saveAiApiKey(String v) => _p.setString(kAiApiKey, v);
+  static String getAiApiKey() => _p.getString(kAiApiKey) ?? '';
   static Future<void> saveFoodRecords(List<FoodRecord> list) => _p.setString(
-      _kFoodRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
+      kFoodRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
   static Future<void> saveExerciseRecords(List<ExerciseRecord> list) =>
       _p.setString(
-          _kExerciseRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
+          kExerciseRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
   static Future<void> saveWeeklyRecords(List<WeeklyRecord> list) =>
       _p.setString(
-          _kWeeklyRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
+          kWeeklyRecords, jsonEncode(list.map((e) => e.toJson()).toList()));
   static Future<void> saveLastFoodClearDate(String date) =>
-      _p.setString(_kLastFoodClearDate, date);
+      _p.setString(kLastFoodClearDate, date);
 
   /// 保存用户自定义食物营养表到本地
   static Future<void> saveCustomFoodNutrition() =>
-      _p.setString(_kCustomFoodNutrition,
+      _p.setString(kCustomFoodNutrition,
           jsonEncode(FoodNutritionDB.customToJsonList()));
 
   /// 加载用户自定义食物营养表(启动时调用)
   static void loadCustomFoodNutrition() {
-    final s = _p.getString(_kCustomFoodNutrition);
+    final s = _p.getString(kCustomFoodNutrition);
     if (s == null) return;
     try {
       final list = jsonDecode(s) as List;
@@ -439,48 +415,40 @@ class StorageService {
   /// 清空所有持久化数据(退出登录且不保留本地数据时调用)
   static Future<void> clearAll() async {
     final keys = [
-      _kAccountState,
-      _kPhone,
-      _kFeishuName,
-      _kFeishuAppId,
-      _kFeishuAppSecret,
-      _kFeishuOpenId,
-      _kProfile,
-      _kNotificationGranted,
-      _kReminderEnabled,
-      _kIsLoopTab,
-      _kLoopInterval,
-      _kSingleReminders,
-      _kRangeStart,
-      _kRangeEnd,
-      _kRepeat,
-      _kEarphoneEnabled,
-      _kSound,
-      _kEarphoneVolume,
-      _kFeishuPushEnabled,
-      _kFeishuPushText,
-      _kFeishuPushOnReminder,
-      _kFeishuPushOnPunch,
-      _kNightDnd,
-      _kNoonDnd,
-      _kHasPromptedNoonDnd,
-      _kRememberSyncFeishu,
-      _kRecords,
-      _kAiApiKey,
-      _kFoodRecords,
-      _kExerciseRecords,
-      _kWeeklyRecords,
-      _kLastFoodClearDate,
-      _kCustomFoodNutrition,
-      _kSpeakerEnabled,
-      _kLegacyEarphoneEnabled,
-      _kLastProfileRemindDate,
-      _kCalendarEventIds,
-      _kAlarmTimes,
-      _kDailyDietSummaries,
-      _kDietAdvice,
-      _kDishRecipes,
-      _kExerciseCalories,
+      kAccountState,
+      kPhone,
+      kFeishuName,
+      kFeishuAppId,
+      kFeishuAppSecret,
+      kFeishuOpenId,
+      kProfile,
+      kNotificationGranted,
+      kReminderEnabled,
+      kLoopInterval,
+      kSingleReminders,
+      kRepeat,
+      kFeishuPushEnabled,
+      kFeishuPushText,
+      kFeishuPushOnReminder,
+      kFeishuPushOnPunch,
+      kNightDnd,
+      kNoonDnd,
+      kHasPromptedNoonDnd,
+      kRememberSyncFeishu,
+      kRecords,
+      kAiApiKey,
+      kFoodRecords,
+      kExerciseRecords,
+      kWeeklyRecords,
+      kLastFoodClearDate,
+      kCustomFoodNutrition,
+      kLastProfileRemindDate,
+      kCalendarEventIds,
+      kAlarmTimes,
+      kDailyDietSummaries,
+      kDietAdvice,
+      kDishRecipes,
+      kExerciseCalories,
     ];
     for (final k in keys) {
       await _p.remove(k);
@@ -499,15 +467,8 @@ class StoredData {
   final UserProfile profile;
   final bool notificationGranted;
   final bool reminderEnabled;
-  final bool isLoopTab;
   final int loopInterval;
   final List<SingleReminder> singleReminders;
-  final String rangeStart;
-  final String rangeEnd;
-  final int repeatIndex;
-  final bool earphoneEnabled;
-  final SoundType sound;
-  final double earphoneVolume;
   final bool feishuPushEnabled;
   final String feishuPushText;
   final bool feishuPushOnReminder;
@@ -522,7 +483,6 @@ class StoredData {
   final List<ExerciseRecord> exerciseRecords;
   final List<WeeklyRecord> weeklyRecords;
   final String lastFoodClearDate;
-  final bool speakerEnabled;
   final List<DailyDietSummary> dailyDietSummaries;
   final DietAdvice? dietAdvice;
 
@@ -536,15 +496,8 @@ class StoredData {
     required this.profile,
     required this.notificationGranted,
     required this.reminderEnabled,
-    required this.isLoopTab,
     required this.loopInterval,
     required this.singleReminders,
-    required this.rangeStart,
-    required this.rangeEnd,
-    required this.repeatIndex,
-    required this.earphoneEnabled,
-    required this.sound,
-    required this.earphoneVolume,
     required this.feishuPushEnabled,
     required this.feishuPushText,
     required this.feishuPushOnReminder,
@@ -559,7 +512,6 @@ class StoredData {
     required this.exerciseRecords,
     required this.weeklyRecords,
     required this.lastFoodClearDate,
-    required this.speakerEnabled,
     required this.dailyDietSummaries,
     required this.dietAdvice,
   });

@@ -1,7 +1,8 @@
-import 'package:flutter/foundation.dart';
+﻿import 'package:flutter/foundation.dart';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
+import 'storage_service.dart';
 
 /// 闹钟服务 - 基于 android_alarm_manager_plus
 /// 使用 oneShotAt(绝对时间) + 回调中重新注册的方式实现可靠循环
@@ -11,10 +12,6 @@ class AlarmService {
 
   /// 单次提醒 ID 的起始基数(避免与循环 ID 冲突)
   static const int singleAlarmBase = 1000;
-
-  /// SharedPreferences 中存储循环间隔的 key
-  static const String kLoopInterval = 'loopInterval';
-  static const String kNextAlarmTime = 'nextAlarmTime';
 
   static bool _initialized = false;
 
@@ -37,10 +34,10 @@ class AlarmService {
     await cancelLoop();
     if (intervalMinutes <= 0) return false;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(kLoopInterval, intervalMinutes);
+    await prefs.setInt(StorageService.kLoopInterval, intervalMinutes);
     // 计算下次提醒的绝对时间
     final nextTime = DateTime.now().add(Duration(minutes: intervalMinutes));
-    await prefs.setString(kNextAlarmTime, nextTime.toIso8601String());
+    await prefs.setString(StorageService.kNextAlarmTime, nextTime.toIso8601String());
     return _scheduleNextLoopAt(nextTime);
   }
 
@@ -69,10 +66,10 @@ class AlarmService {
   /// 供回调函数在执行完提醒后调用,确保循环不中断
   static Future<void> rescheduleLoop() async {
     final prefs = await SharedPreferences.getInstance();
-    final interval = prefs.getInt(kLoopInterval) ?? 0;
+    final interval = prefs.getInt(StorageService.kLoopInterval) ?? 0;
     if (interval > 0) {
       final nextTime = DateTime.now().add(Duration(minutes: interval));
-      await prefs.setString(kNextAlarmTime, nextTime.toIso8601String());
+      await prefs.setString(StorageService.kNextAlarmTime, nextTime.toIso8601String());
       await _scheduleNextLoopAt(nextTime);
     }
   }
@@ -83,15 +80,15 @@ class AlarmService {
   static Future<bool> checkAndFireMissedAlarm() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final interval = prefs.getInt(kLoopInterval) ?? 0;
+      final interval = prefs.getInt(StorageService.kLoopInterval) ?? 0;
       if (interval <= 0) return false;
 
       // 检查是否启用了提醒
-      final enabled = prefs.getBool('reminderEnabled') ?? true;
-      final paused = prefs.getBool('reminderPaused') ?? false;
+      final enabled = prefs.getBool(StorageService.kReminderEnabled) ?? true;
+      final paused = prefs.getBool(StorageService.kReminderPaused) ?? false;
       if (!enabled || paused) return false;
 
-      final nextStr = prefs.getString(kNextAlarmTime);
+      final nextStr = prefs.getString(StorageService.kNextAlarmTime);
       if (nextStr == null) {
         // 没有记录下次提醒时间,重新注册
         debugPrint('[AlarmService] 无下次提醒时间记录,重新注册');

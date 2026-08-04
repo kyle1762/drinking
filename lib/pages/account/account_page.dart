@@ -134,48 +134,6 @@ class _CloudIconPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-/// 欢迎卡片 - 纯展示,无登录流程
-class _WelcomeCard extends StatelessWidget {
-  const _WelcomeCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final s = context.watch<AppState>();
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: CreamCard(
-        color: AppColors.softBlue,
-        child: Row(
-          children: [
-            const CircleAvatar(
-              backgroundColor: Colors.white,
-              child: Icon(Icons.person, color: AppColors.softBlueDeep),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                      s.profile.nickname.isEmpty ? '喝水小达人' : s.profile.nickname,
-                      style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700)),
-                  const Text('本地模式 · 数据保存在本机',
-                      style: TextStyle(
-                          color: AppColors.textSecondary, fontSize: 12)),
-                ],
-              ),
-            ),
-            const Icon(Icons.favorite_outline, color: AppColors.softBlueDeep),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// 飞书机器人配置卡片 - 用户自定义接入自己的飞书机器人
 /// 显示逻辑:
 /// 1. 顶部「启用飞书推送」开关
