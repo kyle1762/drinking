@@ -10,7 +10,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  cupertino_icons: ^1.0.6
 
   # 状态管理
   provider: ^6.1.2
@@ -21,14 +20,8 @@ dependencies:
   # 通知
   flutter_local_notifications: ^17.2.1
 
-  # 图表
-  fl_chart: ^0.68.0
-
   # 后台定时保活
-  android_alarm_manager_plus: ^4.0.4
-
-  # 时间选择
-  flutter_datetime_picker_plus: ^2.2.0
+  android_alarm_manager_plus: ^5.1.1
 
   # 权限处理
   permission_handler: ^11.3.1
@@ -45,12 +38,6 @@ dependencies:
   # 图片选择(相机/相册)
   image_picker: ^1.0.4
 
-  # 文件目录(导出营养数据库到本地)
-  path_provider: ^2.1.4
-
-  # 系统分享(导出文件保存到手机)
-  share_plus: ^10.1.4
-
   # 日历管理(批量添加/删除日历事件)
   device_calendar: ^4.3.3
 
@@ -59,7 +46,6 @@ dependencies:
 
   # 时区数据(device_calendar v4 依赖,需显式声明)
   timezone: ^0.9.4
-
 dev_dependencies:
   flutter_test:
     sdk: flutter

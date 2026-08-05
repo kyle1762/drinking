@@ -123,7 +123,7 @@ class AppState extends ChangeNotifier {
 
   // ============ 飞书推送 ============
   bool _feishuPushEnabled = false;
-  String _feishuPushText = '到时间啦~ 起身动动,接杯水喝一口吧';
+  String _feishuPushText = '到时间啦~ 起来动一动,舒展一下身体吧';
   bool _feishuPushOnReminder = true;
   bool _feishuPushOnPunch = false;
 
@@ -136,10 +136,20 @@ class AppState extends ChangeNotifier {
   bool _nightDnd = true;
   bool _noonDnd = false; // 默认关闭,首启时主动询问用户
   bool _hasPromptedNoonDnd = false; // 是否已弹过午休免打扰询问
+  String _noonDndStart = '12:30';
+  String _noonDndEnd = '14:30';
+  String _nightDndStart = '22:00';
+  String _nightDndEnd = '08:00';
+  bool _calendarAutoSync = false; // 日历提醒自动同步开关
 
   bool get nightDnd => _nightDnd;
   bool get noonDnd => _noonDnd;
   bool get hasPromptedNoonDnd => _hasPromptedNoonDnd;
+  String get noonDndStart => _noonDndStart;
+  String get noonDndEnd => _noonDndEnd;
+  String get nightDndStart => _nightDndStart;
+  String get nightDndEnd => _nightDndEnd;
+  bool get calendarAutoSync => _calendarAutoSync;
 
   // ============ 喝水记录 ============
   final List<WaterRecord> _records = [];
@@ -223,6 +233,10 @@ class AppState extends ChangeNotifier {
 
   /// 今日膳食纤维 (g)
   double get todayFiber => todayFoodRecords.fold(0.0, (s, r) => s + r.fiber);
+
+  /// 今日摄入的「避免吃」食材总量(g),用于红色摄入过多提醒
+  double get todayForbiddenGrams =>
+      todayFoodRecords.fold(0.0, (s, r) => s + r.forbiddenGrams);
 
   /// 每日消耗热量 = 消耗热量 + 基础代谢量 - 摄入热量
   /// 未填全个人信息时返回 null
@@ -536,6 +550,11 @@ class AppState extends ChangeNotifier {
     _feishuPushOnPunch = d.feishuPushOnPunch;
     _nightDnd = d.nightDnd;
     _noonDnd = d.noonDnd;
+    _noonDndStart = d.noonDndStart;
+    _noonDndEnd = d.noonDndEnd;
+    _nightDndStart = d.nightDndStart;
+    _nightDndEnd = d.nightDndEnd;
+    _calendarAutoSync = d.calendarAutoSync;
     _hasPromptedNoonDnd = d.hasPromptedNoonDnd;
     _rememberSyncToFeishu = d.rememberSyncFeishu;
     // 仅加载最近 60 天的记录,避免无限增长
@@ -1018,6 +1037,29 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 设置午休免打扰起止时间("HH:mm")
+  void setNoonDndTime(String start, String end) {
+    _noonDndStart = start;
+    _noonDndEnd = end;
+    StorageService.saveNoonDndTime(start: start, end: end);
+    notifyListeners();
+  }
+
+  /// 设置夜间免打扰起止时间("HH:mm")
+  void setNightDndTime(String start, String end) {
+    _nightDndStart = start;
+    _nightDndEnd = end;
+    StorageService.saveNightDndTime(start: start, end: end);
+    notifyListeners();
+  }
+
+  /// 设置日历提醒自动同步开关
+  void setCalendarAutoSync(bool v) {
+    _calendarAutoSync = v;
+    StorageService.saveCalendarAutoSync(v);
+    notifyListeners();
+  }
+
   /// 标记已弹过午休免打扰询问(首启时调用一次)
   void markNoonDndPrompted() {
     _hasPromptedNoonDnd = true;
@@ -1083,6 +1125,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 更新运动记录(修改后落盘)
+  void updateExerciseRecord(String id, ExerciseRecord updated) {
+    final i = _exerciseRecords.indexWhere((r) => r.id == id);
+    if (i < 0) return;
+    _exerciseRecords[i] = updated;
+    StorageService.saveExerciseRecords(_exerciseRecords);
+    notifyListeners();
+  }
+
   /// 强制刷新 AI 相关数据(API Key 变更后调用)
   void refreshAiData() {
     notifyListeners();
@@ -1092,9 +1143,8 @@ class AppState extends ChangeNotifier {
   bool get inDndPeriod {
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
-    if (_nightDnd && (hm >= 22 * 60 || hm < 8 * 60)) return true;
-    // 午休免打扰:12:30 ~ 14:30
-    if (_noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return true;
+    if (_nightDnd && _inWindow(hm, _nightDndStart, _nightDndEnd)) return true;
+    if (_noonDnd && _inWindow(hm, _noonDndStart, _noonDndEnd)) return true;
     return false;
   }
 
@@ -1102,10 +1152,35 @@ class AppState extends ChangeNotifier {
   String get dndStatusText {
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
-    if (_nightDnd && (hm >= 22 * 60 || hm < 8 * 60)) return '夜间免打扰';
-    if (_noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return '午休免打扰';
+    if (_nightDnd && _inWindow(hm, _nightDndStart, _nightDndEnd)) {
+      return '夜间免打扰(${_fmt(_nightDndStart)}~${_fmt(_nightDndEnd)})';
+    }
+    if (_noonDnd && _inWindow(hm, _noonDndStart, _noonDndEnd)) {
+      return '午休免打扰(${_fmt(_noonDndStart)}~${_fmt(_noonDndEnd)})';
+    }
     return '';
   }
+
+  /// 判断 [minuteOfDay] 是否落在 "HH:mm" 区间内(支持跨天:结束 < 开始)
+  static bool _inWindow(int minuteOfDay, String start, String end) {
+    final s = _toMinute(start);
+    final e = _toMinute(end);
+    if (e > s) {
+      // 同日区间,如 12:30~14:30
+      return minuteOfDay >= s && minuteOfDay < e;
+    }
+    // 跨天区间,如 22:00~08:00
+    return minuteOfDay >= s || minuteOfDay < e;
+  }
+
+  static int _toMinute(String t) {
+    final parts = t.split(':');
+    final h = int.tryParse(parts.isEmpty ? '' : parts[0]) ?? 0;
+    final mm = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    return h.clamp(0, 23) * 60 + mm.clamp(0, 59);
+  }
+
+  static String _fmt(String t) => t;
 
   // ===================== 统计辅助 =====================
 

@@ -178,7 +178,7 @@ void main() {
       final c = CalendarEventRef(
           calendarId: 'cal1',
           eventId: 'evt1',
-          title: '喝水提醒',
+          title: '动一动',
           startTime: DateTime(2026, 8, 3, 9));
       final cBack = CalendarEventRef.fromJson(c.toJson());
       expect(cBack.eventId, 'evt1');
@@ -244,6 +244,54 @@ void main() {
     test('预设 id 唯一', () {
       final ids = DietMethods.all.map((m) => m.id).toList();
       expect(ids.toSet().length, ids.length);
+    });
+
+    test('增肌方案:目标为增肌时返回增肌方案', () {
+      expect(DietMethods.allFor(UserGoal.gainMuscle).length, greaterThan(0));
+      expect(DietMethods.allFor(UserGoal.gainMuscle).first.id,
+          startsWith('gain_'));
+      // 非增肌目标返回减肥方法
+      expect(DietMethods.allFor(UserGoal.loseFat).first.id, 'keto');
+      expect(DietMethods.findByIdFor(UserGoal.gainMuscle, 'keto'), isNull);
+      expect(
+          DietMethods.findByIdFor(UserGoal.gainMuscle, 'gain_high_protein'),
+          isNotNull);
+      // 增肌方案 id 不与减肥方法冲突
+      final allIds = {...DietMethods.all.map((m) => m.id).toSet()};
+      allIds.addAll(DietMethods.muscleGain.map((m) => m.id));
+      expect(allIds.length,
+          DietMethods.all.length + DietMethods.muscleGain.length);
+    });
+
+    test('classify 按推荐/避免/其余返回状态', () {
+      final keto = DietMethods.findById('keto')!;
+      // 避免吃:米饭(糖类/薯类不适用,但"含糖饮料""糕点"等)
+      expect(DietMethods.classify('白米饭', keto), DietFoodStatus.forbidden);
+      expect(DietMethods.classify('可乐', keto), DietFoodStatus.forbidden);
+      expect(DietMethods.classify('蛋挞', keto), DietFoodStatus.forbidden);
+      // 推荐吃:蛋类/肉类/鱼类/坚果/牛油果
+      expect(DietMethods.classify('鸡蛋', keto), DietFoodStatus.allowed);
+      expect(DietMethods.classify('鸡胸肉', keto), DietFoodStatus.allowed);
+      expect(DietMethods.classify('牛油果', keto), DietFoodStatus.allowed);
+      expect(DietMethods.classify('腰果', keto), DietFoodStatus.allowed);
+      // 无方案 -> 中性
+      expect(DietMethods.classify('鸡蛋', null), DietFoodStatus.neutral);
+      // 无关食材 -> 中性
+      expect(DietMethods.classify('海带', keto), DietFoodStatus.neutral);
+    });
+
+    test('classify 支持类别词模糊匹配且避免误伤', () {
+      final med = DietMethods.findById('mediterranean')!;
+      // 红肉:牛肉/猪肉被避免;牛油果不被误判为红肉
+      expect(DietMethods.classify('牛肉', med), DietFoodStatus.forbidden);
+      expect(DietMethods.classify('牛油果', med), DietFoodStatus.allowed);
+      // 加工食品:火腿被避免
+      expect(DietMethods.classify('火腿', med), DietFoodStatus.forbidden);
+      // 全谷物:糙米不被误判为精制米面(低碳水方案)
+      final lowCarb = DietMethods.findById('low_carb')!;
+      expect(
+          DietMethods.classify('糙米饭', lowCarb), DietFoodStatus.allowed);
+      expect(DietMethods.classify('白米饭', lowCarb), DietFoodStatus.forbidden);
     });
   });
 }

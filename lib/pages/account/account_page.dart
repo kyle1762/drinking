@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../state/app_state.dart';
 import '../../services/ai_service.dart';
+import '../../services/storage_service.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/common.dart';
 import '../../dialogs.dart';
@@ -28,6 +30,8 @@ class AccountPage extends StatelessWidget {
                   bound ? _FeishuBindCard() : const SizedBox.shrink(),
             ),
             _ProfileModule(),
+            const _WarningTextCard(),
+            const _ExportDataCard(),
           ],
         ),
       ),
@@ -854,7 +858,7 @@ class _FeishuBindCard extends StatelessWidget {
     messenger.showSnackBar(
       const SnackBar(content: Text('正在发送测试消息...')),
     );
-    final result = await s.sendFeishuMessageWithDetail('喝水提醒测试:飞书推送已连通~');
+    final result = await s.sendFeishuMessageWithDetail('动一动提醒测试:飞书推送已连通~');
     if (!context.mounted) return;
     messenger.showSnackBar(
       SnackBar(
@@ -1133,6 +1137,315 @@ class _ProfileModule extends StatelessWidget {
                 size: 20, color: AppColors.textDisabled),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 红色摄入过多提醒的弹窗文案设置卡(可选预设或自定义)
+class _WarningTextCard extends StatelessWidget {
+  const _WarningTextCard();
+
+  static const _presets = [
+    '陛下,你的减肥大业药丸啦!',
+    '今日红色超标,减肥大业告急!',
+    '你又在偷吃禁忌食物了!',
+    '红色警报:再吃这些小心发胖!',
+    '哎,说好的管住嘴呢?',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final current = StorageService.getForbiddenWarningText();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionTitle('提醒文案'),
+          CreamCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded,
+                        size: 18, color: Color(0xFFC62828)),
+                    const SizedBox(width: 6),
+                    const Text('红色摄入提醒语',
+                        style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    RippleButton(
+                      onTap: () => _editText(context),
+                      borderRadius: 8,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        child: Text('更换/自定义',
+                            style: TextStyle(
+                                color: AppColors.softBlueDeep,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text('今日摄入避免吃食材过多时,将弹出此提醒语',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 11)),
+                const SizedBox(height: 6),
+                Text('「$current」',
+                    style: const TextStyle(
+                        color: Color(0xFFC62828),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _editText(BuildContext context) {
+    final ctrl = TextEditingController(
+        text: StorageService.getForbiddenWarningText());
+    String selected = StorageService.getForbiddenWarningText();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.cream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                    16, 12, 16, 16 + MediaQuery.of(ctx).viewInsets.bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.divider,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const Text('红色摄入提醒语',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary)),
+                    const SizedBox(height: 4),
+                    const Text('选择预设或自定义,保存后生效',
+                        style: TextStyle(
+                            color: AppColors.textSecondary, fontSize: 12)),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: _presets.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(height: 8),
+                        itemBuilder: (_, i) {
+                          final p = _presets[i];
+                          final isSel = selected == p;
+                          return InkWell(
+                            onTap: () {
+                              selected = p;
+                              ctrl.text = p;
+                              setState(() {});
+                            },
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: isSel
+                                    ? const Color(0xFFFFE0E0)
+                                    : AppColors.card,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: isSel
+                                      ? const Color(0xFFC62828)
+                                      : AppColors.divider,
+                                  width: isSel ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(p,
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            color: AppColors.textPrimary)),
+                                  ),
+                                  if (isSel)
+                                    const Icon(Icons.check_circle,
+                                        size: 16,
+                                        color: Color(0xFFC62828)),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: ctrl,
+                      maxLines: 2,
+                      decoration: InputDecoration(
+                        labelText: '自定义文案',
+                        isDense: true,
+                        filled: true,
+                        fillColor: AppColors.card,
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppThemeRadius.s),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    RippleButton(
+                      onTap: () {
+                        final text = ctrl.text.trim();
+                        if (text.isEmpty) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            const SnackBar(content: Text('文案不能为空')),
+                          );
+                          return;
+                        }
+                        StorageService.saveForbiddenWarningText(text);
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('提醒文案已更新')),
+                        );
+                      },
+                      borderRadius: AppThemeRadius.s,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFC62828),
+                          borderRadius:
+                              BorderRadius.circular(AppThemeRadius.s),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text('保存',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// 导出全部数据到手机下载目录
+class _ExportDataCard extends StatelessWidget {
+  const _ExportDataCard();
+
+  static const _channel = MethodChannel('drinking/export');
+
+  Future<void> _export(BuildContext context) async {
+    final json = StorageService.exportAllDataJson();
+    final stamp = DateTime.now().toIso8601String().split('T').first;
+    final fileName = 'drinking_export_$stamp.json';
+    try {
+      final path =
+          await _channel.invokeMethod<String>('saveToDownloads', {
+        'fileName': fileName,
+        'content': json,
+      });
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已导出到 $path'),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } on PlatformException catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导出失败:${e.message ?? '未知错误'}')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SectionTitle('数据备份'),
+          CreamCard(
+            child: Row(
+              children: [
+                const Icon(Icons.download_rounded,
+                    size: 20, color: AppColors.softBlueDeep),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('导出全部数据',
+                          style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                      SizedBox(height: 3),
+                      Text('将账号、记录、营养表等所有数据导出为 JSON 文件',
+                          style: TextStyle(
+                              color: AppColors.textSecondary, fontSize: 11)),
+                    ],
+                  ),
+                ),
+                RippleButton(
+                  onTap: () => _export(context),
+                  borderRadius: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.softBlue,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text('导出',
+                        style: TextStyle(
+                            color: AppColors.softBlueDeep,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -364,7 +364,7 @@ class FeishuService {
 
   /// 构建提醒消息,包含今日喝水统计
   static String _buildReminderMessage(SharedPreferences prefs) {
-    final pushText = prefs.getString(StorageService.kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧';
+    final pushText = prefs.getString(StorageService.kFeishuPushText) ?? '到时间啦~ 起来动一动,舒展一下身体吧';
 
     // 读取昵称
     String nickname = '';

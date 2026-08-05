@@ -39,6 +39,13 @@ class StorageService {
   static const kFeishuPushOnPunch = 'feishuPushOnPunch';
   static const kNightDnd = 'nightDnd';
   static const kNoonDnd = 'noonDnd';
+  // 免打扰起止时间(可自设),格式 "HH:mm"
+  static const kNoonDndStart = 'noonDndStart';
+  static const kNoonDndEnd = 'noonDndEnd';
+  static const kNightDndStart = 'nightDndStart';
+  static const kNightDndEnd = 'nightDndEnd';
+  // 日历提醒自动同步开关(每次间隔/免打扰变化时自动删旧日历事件再加新)
+  static const kCalendarAutoSync = 'calendarAutoSync';
   static const kRememberSyncFeishu = 'rememberSyncFeishu';
   static const kRecords = 'records';
   static const kAiApiKey = 'aiApiKey';
@@ -71,6 +78,10 @@ class StorageService {
   static const kLastReminderTime = 'lastReminderTime';
   // 是否已询问过通知权限(首启引导)
   static const kHasPromptedNotification = 'hasPromptedNotification';
+  // 红色摄入过多时的弹窗文案(用户可选预设或自定义)
+  static const kForbiddenWarningText = 'forbiddenWarningText';
+  // 今日是否已弹过红色摄入过多提醒(每天最多一次)
+  static const kForbiddenWarnedDate = 'forbiddenWarnedDate';
 
   // ============ 菜品配方(永久保存的食材占比) ============
 
@@ -154,12 +165,17 @@ class StorageService {
       loopInterval: p.getInt(kLoopInterval) ?? 60,
       singleReminders: _loadSingleReminders(),
       feishuPushEnabled: p.getBool(kFeishuPushEnabled) ?? false,
-      feishuPushText: p.getString(kFeishuPushText) ?? '到时间啦~ 起身动动,接杯水喝一口吧',
+      feishuPushText: p.getString(kFeishuPushText) ?? '到时间啦~ 起来动一动,舒展一下身体吧',
       feishuPushOnReminder: p.getBool(kFeishuPushOnReminder) ?? true,
       feishuPushOnPunch: p.getBool(kFeishuPushOnPunch) ?? false,
       nightDnd: p.getBool(kNightDnd) ?? true,
       // 午休免打扰默认关闭,首启时主动询问用户
       noonDnd: p.getBool(kNoonDnd) ?? false,
+      noonDndStart: p.getString(kNoonDndStart) ?? '12:30',
+      noonDndEnd: p.getString(kNoonDndEnd) ?? '14:30',
+      nightDndStart: p.getString(kNightDndStart) ?? '22:00',
+      nightDndEnd: p.getString(kNightDndEnd) ?? '08:00',
+      calendarAutoSync: p.getBool(kCalendarAutoSync) ?? false,
       hasPromptedNoonDnd: p.getBool(kHasPromptedNoonDnd) ?? false,
       rememberSyncFeishu: p.getBool(kRememberSyncFeishu) ?? true,
       records: _loadRecords(),
@@ -284,6 +300,23 @@ class StorageService {
   static Future<void> saveHasPromptedNoonDnd(bool v) =>
       _p.setBool(kHasPromptedNoonDnd, v);
 
+  // ---- 免打扰起止时间(可自设) ----
+  static Future<void> saveNoonDndTime({String? start, String? end}) {
+    if (start != null) _p.setString(kNoonDndStart, start);
+    if (end != null) _p.setString(kNoonDndEnd, end);
+    return Future.value();
+  }
+
+  static Future<void> saveNightDndTime({String? start, String? end}) {
+    if (start != null) _p.setString(kNightDndStart, start);
+    if (end != null) _p.setString(kNightDndEnd, end);
+    return Future.value();
+  }
+
+  // ---- 日历提醒自动同步开关 ----
+  static Future<void> saveCalendarAutoSync(bool v) =>
+      _p.setBool(kCalendarAutoSync, v);
+
   /// 读取上次提醒更新个人信息的日期(yyyy-MM-dd)
   static String getLastProfileRemindDate() =>
       _p.getString(kLastProfileRemindDate) ?? '';
@@ -399,6 +432,30 @@ class StorageService {
     return jsonEncode(FoodNutritionDB.exportAllToJson());
   }
 
+  /// 导出全部持久化数据为 JSON 字符串(所有 SharedPreferences 键值)
+  /// 键统一去掉 flutter. 前缀,便于阅读与后续导入
+  static String exportAllDataJson() {
+    final all = _p.getKeys();
+    final map = <String, dynamic>{};
+    for (final k in all) {
+      final key = k.startsWith('flutter.') ? k.substring(8) : k;
+      map[key] = _p.get(k);
+    }
+    return const JsonEncoder.withIndent('  ').convert(map);
+  }
+
+  /// 红色摄入过多提醒的弹窗文案读写
+  static String getForbiddenWarningText() =>
+      _p.getString(kForbiddenWarningText) ?? '陛下,你的减肥大业药丸啦!';
+  static Future<void> saveForbiddenWarningText(String v) =>
+      _p.setString(kForbiddenWarningText, v);
+
+  /// 今日是否已弹过红色摄入过多提醒(每天最多一次)
+  static String getForbiddenWarnedDate() =>
+      _p.getString(kForbiddenWarnedDate) ?? '';
+  static Future<void> saveForbiddenWarnedDate(String date) =>
+      _p.setString(kForbiddenWarnedDate, date);
+
   /// 导出食物营养数据库为 CSV 字符串
   /// 列:名称,能量(kcal/100g),蛋白质(g),脂肪(g),碳水(g),膳食纤维(g)
   static String exportFoodNutritionCsv() {
@@ -433,6 +490,11 @@ class StorageService {
       kFeishuPushOnPunch,
       kNightDnd,
       kNoonDnd,
+      kNoonDndStart,
+      kNoonDndEnd,
+      kNightDndStart,
+      kNightDndEnd,
+      kCalendarAutoSync,
       kHasPromptedNoonDnd,
       kRememberSyncFeishu,
       kRecords,
@@ -449,6 +511,8 @@ class StorageService {
       kDietAdvice,
       kDishRecipes,
       kExerciseCalories,
+      kForbiddenWarningText,
+      kForbiddenWarnedDate,
     ];
     for (final k in keys) {
       await _p.remove(k);
@@ -475,6 +539,11 @@ class StoredData {
   final bool feishuPushOnPunch;
   final bool nightDnd;
   final bool noonDnd;
+  final String noonDndStart;
+  final String noonDndEnd;
+  final String nightDndStart;
+  final String nightDndEnd;
+  final bool calendarAutoSync;
   final bool hasPromptedNoonDnd;
   final bool rememberSyncFeishu;
   final List<WaterRecord> records;
@@ -504,6 +573,11 @@ class StoredData {
     required this.feishuPushOnPunch,
     required this.nightDnd,
     required this.noonDnd,
+    required this.noonDndStart,
+    required this.noonDndEnd,
+    required this.nightDndStart,
+    required this.nightDndEnd,
+    required this.calendarAutoSync,
     required this.hasPromptedNoonDnd,
     required this.rememberSyncFeishu,
     required this.records,

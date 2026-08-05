@@ -25,7 +25,7 @@ class ReminderPage extends StatelessWidget {
             if (s.inDndPeriod)
               SoftBanner(
                 icon: Icons.do_not_disturb_on_outlined,
-                text: '当前处于${s.dndStatusText},提醒将静音(闹钟仍正常触发)',
+                text: '当前处于${s.dndStatusText},期间不提醒、不弹通知',
               ),
             const PunchButton(),
             const SizedBox(height: 8),
@@ -387,9 +387,11 @@ class _DndModuleState extends State<_DndModule> {
                             _dndRow(
                               icon: Icons.free_breakfast_outlined,
                               title: '午休免打扰',
-                              timeRange: '12:30 ~ 14:30',
+                              timeRange: '${s.noonDndStart} ~ ${s.noonDndEnd}',
                               value: s.noonDnd,
                               onChanged: s.setNoonDnd,
+                              onEditTime: () =>
+                                  _editDndTime(context, isNoon: true),
                               activeColor: AppColors.softBlueDeep,
                             ),
                             const Divider(height: 1),
@@ -397,16 +399,19 @@ class _DndModuleState extends State<_DndModule> {
                             _dndRow(
                               icon: Icons.nightlight_round_outlined,
                               title: '夜间免打扰',
-                              timeRange: '22:00 ~ 次日 08:00',
+                              timeRange:
+                                  '${s.nightDndStart} ~ ${s.nightDndEnd} (次日)',
                               value: s.nightDnd,
                               onChanged: s.setNightDnd,
+                              onEditTime: () =>
+                                  _editDndTime(context, isNoon: false),
                               activeColor: AppColors.mintDeep,
                             ),
                             const SizedBox(height: 6),
                             const Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                  '免打扰时段内,闹钟仍正常触发但会静音(通知栏可见)',
+                                  '免打扰时段内,将不进行提醒,也不会弹出任何通知',
                                   style: TextStyle(
                                       color: AppColors.textSecondary,
                                       fontSize: 11)),
@@ -438,6 +443,7 @@ class _DndModuleState extends State<_DndModule> {
     required bool value,
     required ValueChanged<bool> onChanged,
     required Color activeColor,
+    VoidCallback? onEditTime,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -454,9 +460,26 @@ class _DndModuleState extends State<_DndModule> {
                         color: AppColors.textPrimary,
                         fontSize: 15,
                         fontWeight: FontWeight.w600)),
-                Text('时段:$timeRange',
-                    style: const TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12)),
+                InkWell(
+                  onTap: onEditTime,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('时段:$timeRange',
+                            style: const TextStyle(
+                                color: AppColors.textSecondary, fontSize: 12)),
+                        if (onEditTime != null) ...[
+                          const SizedBox(width: 4),
+                          const Icon(Icons.edit_outlined,
+                              size: 12, color: AppColors.textSecondary),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -468,6 +491,49 @@ class _DndModuleState extends State<_DndModule> {
         ],
       ),
     );
+  }
+
+  /// 编辑免打扰起止时间(午休/夜间)
+  Future<void> _editDndTime(BuildContext context, {required bool isNoon}) async {
+    final s = context.read<AppState>();
+    final currentStart = isNoon ? s.noonDndStart : s.nightDndStart;
+    final currentEnd = isNoon ? s.noonDndEnd : s.nightDndEnd;
+
+    final start = await _pickTime(context, currentStart, '开始时间');
+    if (start == null || !context.mounted) return;
+    final end = await _pickTime(context, currentEnd, '结束时间');
+    if (end == null || !context.mounted) return;
+
+    if (isNoon) {
+      s.setNoonDndTime(start, end);
+    } else {
+      s.setNightDndTime(start, end);
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+          content: Text(isNoon
+              ? '午休免打扰已设为 $start ~ $end'
+              : '夜间免打扰已设为 $start ~ $end')),
+    );
+  }
+
+  /// 弹出时间选择器,返回 "HH:mm" 字符串;取消返回 null
+  Future<String?> _pickTime(
+      BuildContext context, String initial, String title) async {
+    final parts = initial.split(':');
+    final initialTime = TimeOfDay(
+      hour: int.tryParse(parts[0]) ?? 12,
+      minute: int.tryParse(parts[1]) ?? 0,
+    );
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initialTime,
+      helpText: title,
+    );
+    if (picked == null) return null;
+    final h = picked.hour.toString().padLeft(2, '0');
+    final m = picked.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 }
 
@@ -481,12 +547,40 @@ class _CalendarAlarmModule extends StatefulWidget {
 class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
   List<CalendarEventRef> _calendarRefs = [];
   bool _loading = false;
+  // 上次同步时的配置指纹(间隔+免打扰),变化时自动重新同步
+  String _lastSyncFingerprint = '';
+  late final AppState _appState;
 
   @override
   void initState() {
     super.initState();
+    _appState = context.read<AppState>();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+    _appState.addListener(_onConfigChanged);
   }
+
+  @override
+  void dispose() {
+    _appState.removeListener(_onConfigChanged);
+    super.dispose();
+  }
+
+  /// 间隔/免打扰配置变化时,若开启了自动同步则重新生成日历事件
+  void _onConfigChanged() {
+    if (!mounted) return;
+    final s = _appState;
+    if (!s.calendarAutoSync) {
+      _lastSyncFingerprint = _fingerprint(s);
+      return;
+    }
+    final fp = _fingerprint(s);
+    if (fp == _lastSyncFingerprint) return;
+    _lastSyncFingerprint = fp;
+    _batchAddCalendar();
+  }
+
+  String _fingerprint(AppState s) =>
+      '${s.loopInterval}|${s.noonDnd}|${s.nightDnd}|${s.noonDndStart}|${s.noonDndEnd}|${s.nightDndStart}|${s.nightDndEnd}';
 
   void _loadData() {
     setState(() {
@@ -497,11 +591,16 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
   /// 批量添加日历事件
   Future<void> _batchAddCalendar() async {
     final s = context.read<AppState>();
-    // 日历事件为每日重复,需包含全天所有时间点(不跳过已过去的时间)
+    // 日历事件为每日重复,需包含全天所有时间点(不跳过已过去的时间),
+    // 提醒从 0:00 起按间隔对齐;免打扰全部关闭时覆盖全天 0:00-24:00
     final allTimes = CalendarAlarmService.generateReminderTimes(
-      wakeTime: s.profile.wakeTime,
-      bedTime: s.profile.bedTime,
       intervalMinutes: s.loopInterval,
+      noonDnd: s.noonDnd,
+      nightDnd: s.nightDnd,
+      noonDndStart: s.noonDndStart,
+      noonDndEnd: s.noonDndEnd,
+      nightDndStart: s.nightDndStart,
+      nightDndEnd: s.nightDndEnd,
       skipPast: false,
     );
     if (allTimes.isEmpty) {
@@ -517,7 +616,7 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
         await CalendarAlarmService.clearCalendarEvents(_calendarRefs);
       }
       final refs = await CalendarAlarmService.batchAddCalendarEvents(
-        title: '喝水提醒',
+        title: '动一动',
         times: allTimes,
       );
       await StorageService.saveCalendarEventIds(refs);
@@ -609,7 +708,46 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
+                // 自动同步开关
+                Row(
+                  children: [
+                    const Icon(Icons.sync_alt,
+                        size: 16, color: AppColors.mintDeep),
+                    const SizedBox(width: 6),
+                    const Expanded(
+                      child: Text('自动同步',
+                          style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600)),
+                    ),
+                    Switch(
+                      value: context.watch<AppState>().calendarAutoSync,
+                      activeThumbColor: AppColors.mintDeep,
+                      onChanged: (v) {
+                        final s = context.read<AppState>();
+                        s.setCalendarAutoSync(v);
+                        // 开启自动同步时,立即同步一次(覆盖非当日区间生成的旧事件)
+                        if (v) {
+                          _lastSyncFingerprint = '';
+                          _onConfigChanged();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                        '开启后,间隔或免打扰时段变化时自动删除旧日历事件并重新添加',
+                        style:
+                            TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                  ),
+                ),
+                const SizedBox(height: 8),
 
                 // 添加日历按钮
                 SizedBox(
@@ -703,7 +841,8 @@ class _TodayRecordExpandableState extends State<_TodayRecordExpandable> {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final count = s.records.length;
+    final today = s.todayRecords;
+    final count = today.length;
     final totalMl = s.todayTotal;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -773,7 +912,7 @@ class _TodayRecordExpandableState extends State<_TodayRecordExpandable> {
                                 ),
                               )
                             : Column(
-                                children: s.records
+                                children: today
                                     .map((r) => _recordItem(context, r, s))
                                     .toList(),
                               ),

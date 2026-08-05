@@ -701,7 +701,7 @@ class _ProfileCardState extends State<_ProfileCard> {
     final muscle = double.tryParse(_muscleCtrl.text.trim()) ?? 0;
     final s = context.read<AppState>();
     final goalChanged = s.profile.goal != _goal;
-    final newProfile = s.profile.copyWith(
+    var newProfile = s.profile.copyWith(
       gender: _gender,
       age: age,
       height: height,
@@ -710,6 +710,13 @@ class _ProfileCardState extends State<_ProfileCard> {
       goal: _goal,
       imagePath: _imagePath,
     );
+    // 目标变更后自动切换饮食方案(增肌 -> 增肌方案;减脂/保持 -> 减肥方法),默认选第一个
+    if (goalChanged) {
+      final plans = DietMethods.allFor(_goal);
+      if (plans.isNotEmpty) {
+        newProfile = newProfile.copyWith(dietMethodId: plans.first.id);
+      }
+    }
     s.updateProfile(newProfile);
     // 目标变更后,清空旧建议(新目标需要重新分析)
     if (goalChanged) {
@@ -1219,7 +1226,9 @@ class _DietMethodCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = context.watch<AppState>();
-    final method = DietMethods.findById(s.profile.dietMethodId);
+    final isGain = s.profile.goal == UserGoal.gainMuscle;
+    final method =
+        DietMethods.findByIdFor(s.profile.goal, s.profile.dietMethodId);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: CreamCard(
@@ -1237,7 +1246,9 @@ class _DietMethodCard extends StatelessWidget {
                         : AppColors.softBlueDeep),
                 const SizedBox(width: 6),
                 Text(
-                  method != null ? '已选择: ${method.name}' : '选择减肥方法',
+                  method != null
+                      ? '已选择: ${method.name}'
+                      : (isGain ? '选择增肌方案' : '选择减肥方法'),
                   style: TextStyle(
                     color: method != null
                         ? AppColors.mintDeep
@@ -1329,6 +1340,8 @@ class _DietMethodCard extends StatelessWidget {
       ),
       builder: (ctx) {
         final s = context.read<AppState>();
+        final isGain = s.profile.goal == UserGoal.gainMuscle;
+        final plans = DietMethods.allFor(s.profile.goal);
         return StatefulBuilder(
           builder: (ctx, setState) {
             return SafeArea(
@@ -1355,8 +1368,8 @@ class _DietMethodCard extends StatelessWidget {
                         const Icon(Icons.restaurant_menu,
                             size: 20, color: AppColors.softBlueDeep),
                         const SizedBox(width: 8),
-                        const Text('选择减肥方法',
-                            style: TextStyle(
+                        Text(isGain ? '选择增肌方案' : '选择减肥方法',
+                            style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w700,
                                 color: AppColors.textPrimary)),
@@ -1379,11 +1392,11 @@ class _DietMethodCard extends StatelessWidget {
                     Flexible(
                       child: ListView.separated(
                         shrinkWrap: true,
-                        itemCount: DietMethods.all.length,
+                        itemCount: plans.length,
                         separatorBuilder: (_, __) =>
                             const SizedBox(height: 10),
                         itemBuilder: (_, i) {
-                          final m = DietMethods.all[i];
+                          final m = plans[i];
                           final selected = m.id == s.profile.dietMethodId;
                           return InkWell(
                             onTap: () {

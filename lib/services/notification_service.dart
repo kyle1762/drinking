@@ -13,12 +13,12 @@ class NotificationService {
   static bool _initialized = false;
 
   /// 通知渠道 ID
-  /// 注意: Android 8+ 渠道一旦创建 importance 不可通过代码修改
-  /// 如需提升 importance 必须更换新的渠道 ID
-  /// v3: 启用 fullScreenIntent 强制横幅显示 + 应用更名
-  static const String channelId = 'drinking_reminder_v3';
-  static const String channelName = '喝水小精灵提醒';
-  static const String channelDesc = '温柔的喝水小精灵提醒通知';
+  /// 注意: Android 8+ 渠道一旦创建 importance/声音 不可通过代码修改
+  /// 如需调整必须更换新的渠道 ID
+  /// v4: 取消通知音效(静默提醒) + 「动一动」改名
+  static const String channelId = 'drinking_reminder_v4';
+  static const String channelName = '动一动提醒';
+  static const String channelDesc = '温柔的动一动小精灵提醒通知';
 
   /// 初始化插件与通知渠道
   static Future<void> init() async {
@@ -34,18 +34,22 @@ class NotificationService {
       importance: Importance.max,
       showBadge: true,
       enableVibration: true,
-      playSound: true,
+      playSound: false,
     );
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
 
-    // 删除旧版渠道 v2(若存在),避免遗留配置干扰新渠道
+    // 删除旧版渠道 v2/v3(若存在),避免遗留配置干扰新渠道
     await _plugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.deleteNotificationChannel('drinking_reminder_v2');
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.deleteNotificationChannel('drinking_reminder_v3');
 
     _initialized = true;
   }
@@ -57,11 +61,11 @@ class NotificationService {
     return status.isGranted;
   }
 
-  /// 立即弹出一条喝水提醒通知
+  /// 立即弹出一条「动一动」提醒通知(静默,无声音)
   /// 启用 fullScreenIntent + reminder category + ticker,让系统默认显示横幅
   static Future<void> showReminder({
-    String title = '该喝水啦~',
-    String body = '记得补充水分,保持身体水润',
+    String title = '该动一动啦~',
+    String body = '起来伸展一下,活动活动身体吧',
     int? id,
   }) async {
     if (!_initialized) await init();
@@ -75,7 +79,7 @@ class NotificationService {
       icon: '@mipmap/ic_launcher',
       category: AndroidNotificationCategory.reminder,
       fullScreenIntent: true,
-      ticker: '喝水小精灵提醒',
+      ticker: '动一动提醒',
       enableLights: true,
     );
     const details = NotificationDetails(android: androidDetails);
@@ -94,16 +98,14 @@ class NotificationService {
 
   /// 闹钟触发时的回调入口(后台 isolate 也能调用)
   /// 由 AlarmService 的顶层 callback 调用
-  /// 检查免打扰/提醒时段/重复周期,不满足条件时弹静默提示通知(让用户感知闹钟已触发)
-  ///
-  /// 执行顺序优化(解决「循环闹钟通知成功但飞书推送失败」问题):
+  /// 检查免打扰/重复周期:免打扰时段内完全不提醒、不弹通知
+
+  /// 执行顺序(优化解决「循环闹钟通知成功但飞书推送失败」问题):
   /// 1. 弹出通知(最快,优先级最高)
-  /// 2. 并行启动飞书推送 + 音效播放
-  /// 3. 只 await 飞书推送(关键任务),音效播放 fire-and-forget
+  /// 2. 启动飞书推送并 await(关键任务)
   ///
-  /// 原因:音效播放内部有 8 秒强制等待,串行会导致飞书推送延迟 8 秒才开始
-  /// 后台 isolate 在等待期间可能被系统杀死,导致飞书推送代码无法执行
-  /// 并行执行可确保飞书推送立即开始,不被音效阻塞
+  /// 原因:后台 isolate 在等待期间可能被系统杀死,先弹通知可确保用户感知,
+  /// 再并行等待飞书推送,不被其它任务阻塞
   @pragma('vm:entry-point')
   static Future<void> onAlarmFired(int id) async {
     debugPrint('[AlarmFired] 闹钟触发, id=$id, time=${DateTime.now()}');
@@ -119,10 +121,9 @@ class NotificationService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
 
-    // 免打扰检查
+    // 免打扰检查:免打扰时段内完全不提醒、不弹任何通知
     if (_isInDndPeriod(prefs)) {
-      debugPrint('[AlarmFired] 处于免打扰时段,跳过提醒(弹静默提示)');
-      await _showSkippedNotification('当前处于免打扰时段,已静音提醒');
+      debugPrint('[AlarmFired] 处于免打扰时段,跳过提醒(不弹通知)');
       return;
     }
 
@@ -145,7 +146,6 @@ class NotificationService {
     }
 
     // 2. 启动飞书推送(关键任务)
-    // 音效功能已移除,只保留通知 + 飞书推送
     debugPrint('[AlarmFired] 启动飞书推送');
     final pushFuture = FeishuService.pushReminderFromBackground();
 
@@ -167,33 +167,6 @@ class NotificationService {
     debugPrint('[AlarmFired] 提醒流程全部完成');
   }
 
-  /// 静默提示通知 - 闹钟已触发但被免打扰/时段拦截时使用
-  /// 不带声音/振动,仅通知栏可见,让用户感知闹钟机制正常工作
-  static Future<void> _showSkippedNotification(String reason) async {
-    try {
-      const androidDetails = AndroidNotificationDetails(
-        channelId,
-        channelName,
-        channelDescription: channelDesc,
-        importance: Importance.low,
-        priority: Priority.low,
-        playSound: false,
-        enableVibration: false,
-        visibility: NotificationVisibility.public,
-        icon: '@mipmap/ic_launcher',
-      );
-      const details = NotificationDetails(android: androidDetails);
-      await _plugin.show(
-        DateTime.now().millisecondsSinceEpoch.remainder(100000),
-        '提醒已静音',
-        '$reason(闹钟已正常触发)',
-        details,
-      );
-    } catch (e) {
-      debugPrint('[AlarmFired] 静默提示通知失败: $e');
-    }
-  }
-
   /// 测试提醒:跳过所有条件检查,直接执行通知+飞书推送
   /// 用于验证闹钟机制是否正常工作
   @pragma('vm:entry-point')
@@ -209,7 +182,6 @@ class NotificationService {
     );
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
-    // 音效功能已移除,只保留通知 + 飞书推送
     await FeishuService.pushReminderFromBackground();
     await _recordReminderFired(prefs);
     debugPrint('[TestAlarm] 测试提醒流程完成');
@@ -236,15 +208,34 @@ class NotificationService {
   static bool _isInDndPeriod(SharedPreferences prefs) {
     final nightDnd = prefs.getBool(StorageService.kNightDnd) ?? true;
     final noonDnd = prefs.getBool(StorageService.kNoonDnd) ?? false;
+    final noonStart = prefs.getString(StorageService.kNoonDndStart) ?? '12:30';
+    final noonEnd = prefs.getString(StorageService.kNoonDndEnd) ?? '14:30';
+    final nightStart = prefs.getString(StorageService.kNightDndStart) ?? '22:00';
+    final nightEnd = prefs.getString(StorageService.kNightDndEnd) ?? '08:00';
 
     final now = DateTime.now();
     final hm = now.hour * 60 + now.minute;
 
-    if (nightDnd && (hm >= 22 * 60 || hm < 8 * 60)) return true;
-    // 午休免打扰:12:30 ~ 14:30
-    if (noonDnd && hm >= 12 * 60 + 30 && hm < 14 * 60 + 30) return true;
-
+    if (nightDnd && _inWindow(hm, nightStart, nightEnd)) return true;
+    if (noonDnd && _inWindow(hm, noonStart, noonEnd)) return true;
     return false;
+  }
+
+  /// 判断 [minuteOfDay] 是否落在 "HH:mm" 区间内(支持跨天:结束 < 开始)
+  static bool _inWindow(int minuteOfDay, String start, String end) {
+    final s = _toMinute(start);
+    final e = _toMinute(end);
+    if (e > s) {
+      return minuteOfDay >= s && minuteOfDay < e;
+    }
+    return minuteOfDay >= s || minuteOfDay < e;
+  }
+
+  static int _toMinute(String t) {
+    final parts = t.split(':');
+    final h = int.tryParse(parts.isEmpty ? '' : parts[0]) ?? 0;
+    final m = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    return h.clamp(0, 23) * 60 + m.clamp(0, 59);
   }
 
   /// 检查今天是否属于重复周期

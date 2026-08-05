@@ -290,6 +290,7 @@ class FoodRecord {
   final double fat; // g
   final double carbs; // g
   final double fiber; // g
+  final double forbiddenGrams; // 本次记录中「避免吃」食材的克数(用于红色摄入过多提醒)
 
   FoodRecord({
     required this.id,
@@ -302,6 +303,7 @@ class FoodRecord {
     this.fat = 0,
     this.carbs = 0,
     this.fiber = 0,
+    this.forbiddenGrams = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -315,6 +317,7 @@ class FoodRecord {
         'fat': fat,
         'carbs': carbs,
         'fiber': fiber,
+        'forbiddenGrams': forbiddenGrams,
       };
 
   factory FoodRecord.fromJson(Map<String, dynamic> json) {
@@ -329,6 +332,7 @@ class FoodRecord {
       fat: (json['fat'] as num?)?.toDouble() ?? 0,
       carbs: (json['carbs'] as num?)?.toDouble() ?? 0,
       fiber: (json['fiber'] as num?)?.toDouble() ?? 0,
+      forbiddenGrams: (json['forbiddenGrams'] as num?)?.toDouble() ?? 0,
     );
   }
 }
@@ -431,7 +435,7 @@ class CalendarEventRef {
     return CalendarEventRef(
       calendarId: json['calendarId'] as String? ?? '',
       eventId: json['eventId'] as String? ?? '',
-      title: json['title'] as String? ?? '喝水提醒',
+      title: json['title'] as String? ?? '动一动',
       startTime: json['startTime'] != null
           ? DateTime.parse(json['startTime'] as String)
           : DateTime.now(),
@@ -448,7 +452,7 @@ class AlarmTimeRecord {
   const AlarmTimeRecord({
     required this.hour,
     required this.minute,
-    this.label = '喝水提醒',
+    this.label = '动一动',
   });
 
   String get timeStr =>
@@ -464,7 +468,7 @@ class AlarmTimeRecord {
     return AlarmTimeRecord(
       hour: (json['hour'] as num?)?.toInt() ?? 0,
       minute: (json['minute'] as num?)?.toInt() ?? 0,
-      label: (json['label'] as String?) ?? '喝水提醒',
+      label: (json['label'] as String?) ?? '动一动',
     );
   }
 }

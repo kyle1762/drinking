@@ -17,12 +17,12 @@ const _kTabs = <_TabItem>[
   _TabItem(
       icon: Icons.analytics_outlined, label: '热量追踪', page: AiRecognitionPage()),
   _TabItem(
-      icon: Icons.water_drop_outlined, label: '喝水提醒', page: ReminderPage()),
+      icon: Icons.directions_run, label: '动一动', page: ReminderPage()),
   _TabItem(
       icon: Icons.person_outline_rounded, label: 'ai&飞书', page: AccountPage()),
 ];
 
-/// 首页 - 三Tab结构(热量追踪 / 喝水提醒 / ai&飞书)
+/// 首页 - 三Tab结构(热量追踪 / 动一动 / ai&飞书)
 /// 安卓返回键逻辑:
 /// 1. 弹窗状态下返回:关闭弹窗(Flutter自动处理)
 /// 2. 非首个Tab:回到上一个Tab
@@ -106,9 +106,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('开启喝水提醒',
+        title: const Text('开启动一动提醒',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-        content: const Text('需要开启通知权限,才能在后台温柔地提醒你喝水哦~',
+        content: const Text('需要开启通知权限,才能在后台温柔地提醒你起来活动哦~',
             style: TextStyle(fontSize: 14, height: 1.5)),
         actions: [
           TextButton(
@@ -148,7 +148,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         title: const Text('开启午休免打扰?',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
         content: const Text(
-            '开启后,中午 12:30 ~ 14:30 期间提醒将静音(闹钟仍正常触发,通知栏可见)。\n\n你可以稍后在「喝水提醒」页面的「免打扰」中修改。',
+            '开启后,中午 12:30 ~ 14:30 期间将不进行提醒,也不会弹出任何通知。\n\n你可以稍后在「动一动」页面的「免打扰」中修改。',
             style: TextStyle(fontSize: 14, height: 1.5)),
         actions: [
           TextButton(

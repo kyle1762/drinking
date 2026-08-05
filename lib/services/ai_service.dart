@@ -163,19 +163,8 @@ class AiService {
       // 情况A:营养成分表
       if (jsonType == 'label') {
         final name = json['name'] as String? ?? '未知食品';
-        final energy = (json['energy'] as num?)?.toDouble() ?? 0;
-        final protein = (json['protein'] as num?)?.toDouble() ?? 0;
-        final fat = (json['fat'] as num?)?.toDouble() ?? 0;
-        final carbs = (json['carbs'] as num?)?.toDouble() ?? 0;
-        final fiber = (json['fiber'] as num?)?.toDouble() ?? 0;
-        final nut = FoodNutrition(
-          name: name,
-          energy: energy,
-          protein: protein,
-          fat: fat,
-          carbs: carbs,
-          fiber: fiber,
-        );
+        final nut = _normalizeLabelNutrition(json);
+        final energy = nut.energy;
         return AiRecognitionResult(
           type: type,
           name: name,
@@ -257,17 +246,76 @@ class AiService {
     }
   }
 
+  /// 将 AI 返回的营养成分表原始数据统一换算为「每100g + kcal」格式
+  ///
+  /// 表上单位可能是每100g/每100ml/每份,能量单位可能是 kcal/kJ。
+  /// 为避免 AI 心算出错,提示词要求 AI 原样上报数值与单位,由本方法确定性换算。
+  static FoodNutrition _normalizeLabelNutrition(Map<String, dynamic> json) {
+    var energy = (json['energy'] as num?)?.toDouble() ?? 0;
+    var protein = (json['protein'] as num?)?.toDouble() ?? 0;
+    var fat = (json['fat'] as num?)?.toDouble() ?? 0;
+    var carbs = (json['carbs'] as num?)?.toDouble() ?? 0;
+    var fiber = (json['fiber'] as num?)?.toDouble() ?? 0;
+
+    // 1) 能量单位 kJ -> kcal(1 kcal = 4.184 kJ)
+    final energyUnit =
+        (json['energy_unit'] as String?)?.toLowerCase() ?? 'kcal';
+    if (energyUnit == 'kj') {
+      energy /= 4.184;
+    }
+
+    // 2) 基准单位换算到「每100g」:得到把原始数值换算成每100g的倍率
+    double scale = 1.0;
+    final baseUnit = (json['base_unit'] as String?) ?? '100g';
+    switch (baseUnit) {
+      case '100ml':
+        // 每100ml -> 每100g:按密度(g/ml)换算,液体默认 1.0
+        final density = (json['density'] as num?)?.toDouble() ?? 1.0;
+        if (density > 0) scale = density;
+        break;
+      case 'per_serving':
+      case '每份':
+      case 'per':
+      case 'serving':
+        // 每份 -> 每100g:每份重量未知时无法换算,按每100g处理
+        final servingGrams = (json['serving_size'] as num?)?.toDouble() ?? 0;
+        if (servingGrams > 0) {
+          scale = 100 / servingGrams;
+        } else {
+          debugPrint('[AiService] label 为「每份」但缺少 serving_size,按每100g处理');
+        }
+        break;
+      case '100g':
+      default:
+        scale = 1.0;
+    }
+
+    energy *= scale;
+    protein *= scale;
+    fat *= scale;
+    carbs *= scale;
+    fiber *= scale;
+
+    return FoodNutrition(
+      name: json['name'] as String? ?? '未知食品',
+      energy: energy,
+      protein: protein,
+      fat: fat,
+      carbs: carbs,
+      fiber: fiber,
+    );
+  }
+
   /// 构造食物识别提示词
   static String _buildFoodPrompt() {
-    return '请识别这张食物图片。首先判断图片是否为预包装食品的"营养成分表"(通常含表格,列出每100g或每份的能量/蛋白质/脂肪/碳水化合物/钠等)。\n'
-        '情况A:若图片是营养成分表,返回纯JSON(不要markdown标记):\n'
-        '{"type":"label","name":"食品名称(从表上或包装上识别)","energy":每100g能量kcal数值,"protein":每100g蛋白质g数值,"fat":每100g脂肪g数值,"carbs":每100g碳水化合物g数值,"fiber":每100g膳食纤维g数值(若表上无则填0),"confidence":0到1}\n'
-        '注意:若表上单位是每100ml或每份,请换算为每100g后填写;能量若单位是kJ,请除以4.184转换为kcal。\n'
+    return '请识别这张食物图片。首先判断图片是否为预包装食品的"营养成分表"(通常含表格,列出每100g或每100ml或每份的能量/蛋白质/脂肪/碳水化合物/钠等)。\n'
+        '情况A:若图片是营养成分表,返回纯JSON(不要markdown标记),各项数值请按表上原样填写、不要自行换算:\n'
+        '{"type":"label","name":"食品名称(从表上或包装上识别)","base_unit":"表上基准单位,只能是 100g / 100ml / per_serving 之一","serving_size":"若 base_unit 为 per_serving,填每份重量(克);否则填0","energy":"能量数值(原样)","energy_unit":"能量单位,只能是 kcal 或 kJ","protein":"蛋白质数值(原样)","fat":"脂肪数值(原样)","carbs":"碳水化合物数值(原样)","fiber":"膳食纤维数值(原样,表上无则填0)","confidence":0到1}\n'
+        '注意:1)能量若表上标 kJ,energy 填原始 kJ 数值、energy_unit 填 "kJ",不要除以4.184 2)表上是每100ml 就 base_unit 填 "100ml"、每份填 "per_serving" 并填 serving_size(每份克数),不要换算 3)所有换算由程序完成,你只需如实抄录数值与单位\n'
+        '标签示例: {"type":"label","name":"某饼干","base_unit":"100g","serving_size":0,"energy":480,"energy_unit":"kcal","protein":7,"fat":20,"carbs":65,"fiber":2.5,"confidence":0.95}\n'
         '情况B:若图片是菜品或普通食物(非营养成分表),返回纯JSON(不要markdown标记):\n'
-        '{"type":"dish","dish":"菜品名称","ingredients":[{"name":"食材名","ratio":0到1之间占比}],"estimated_weight":估算的本次食物总重量克数整数(视觉估算,若无把握填0),"confidence":0到1之间信心度}\n'
         '注意:1)食材名必须使用中文常见名(如:番茄、土豆、猪肉、牛肉、鸡肉、白菜、胡萝卜、鸡蛋、米饭) 2)所有食材占比之和应接近1 3)最多5个主要食材 4)estimated_weight 为本次图片中食物的总重量(g),视觉估算(食物密度约1g/ml,汤汁较多可略高)\n'
-        '菜品示例: {"type":"dish","dish":"番茄炒蛋","ingredients":[{"name":"番茄","ratio":0.4},{"name":"鸡蛋","ratio":0.6}],"estimated_weight":200,"confidence":0.9}\n'
-        '标签示例: {"type":"label","name":"某饼干","energy":480,"protein":7,"fat":20,"carbs":65,"fiber":2.5,"confidence":0.95}';
+        '菜品示例: {"type":"dish","dish":"番茄炒蛋","ingredients":[{"name":"番茄","ratio":0.4},{"name":"鸡蛋","ratio":0.6}],"estimated_weight":200,"confidence":0.9}';
   }
 
   /// 调用纯文本 AI 接口,查询某个食材每100g的营养成分

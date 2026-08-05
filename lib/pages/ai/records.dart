@@ -150,6 +150,16 @@ class _TodayRecordList extends StatelessWidget {
     return '$h:$m';
   }
 
+  /// 编辑运动记录:重新打开手动输入运动 sheet(预填),保存时更新原记录
+  void _editExercise(BuildContext context, ExerciseRecord record) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ManualExerciseSheet(initial: record),
+    );
+  }
+
   Widget _buildItem(BuildContext context, dynamic item) {
     final isFood = item is FoodRecord;
     final name = isFood ? item.name : (item as ExerciseRecord).name;
@@ -201,6 +211,18 @@ class _TodayRecordList extends StatelessWidget {
                   fontSize: 14,
                   fontWeight: FontWeight.w700)),
           const SizedBox(width: 4),
+          // 运动记录支持编辑修改(修改后落盘)
+          if (!isFood) ...[
+            RippleButton(
+              onTap: () => _editExercise(context, item),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.edit_outlined,
+                    size: 18, color: AppColors.textSecondary),
+              ),
+            ),
+            const SizedBox(width: 2),
+          ],
           RippleButton(
             onTap: () => AppDialogs.confirm(
               context,

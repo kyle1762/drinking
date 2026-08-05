@@ -28,7 +28,7 @@ void main() {
 
     // 底部三 Tab
     expect(find.text('热量追踪'), findsOneWidget);
-    expect(find.text('喝水提醒'), findsOneWidget);
+    expect(find.text('动一动'), findsOneWidget);
     expect(find.text('ai&飞书'), findsOneWidget);
 
     // 卸载页面,取消 HomePage 的周期定时器

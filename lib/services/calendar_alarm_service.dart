@@ -14,45 +14,59 @@ class CalendarAlarmService {
 
   // ============ 提醒时间生成 ============
 
-  /// 根据作息时间和间隔,生成今日提醒时间列表
-  /// [wakeTime] 起床时间 "HH:mm"
-  /// [bedTime] 睡觉时间 "HH:mm"
-  /// [intervalMinutes] 间隔分钟
+  /// 根据间隔生成当日提醒时间列表
+  /// 提醒从 0:00 起按 [intervalMinutes] 间隔对齐计时(如 60 分钟 → 0:00,1:00,...),
+  /// 覆盖全天 0:00~24:00;若启用了免打扰,则跳过落入午休/夜间免打扰区间的时刻。
+  /// [noonDnd]/[nightDnd] 开关、[noonDndStart]/[noonDndEnd]/[nightDndStart]/[nightDndEnd]
+  /// 为免打扰时段配置("HH:mm")。当所有免打扰关闭时,提醒覆盖全天 0:00-24:00。
   /// [skipPast] 是否跳过已过去的时间(默认 true,用于闹钟;日历设为 false 因为每日重复)
   /// 返回今日的 DateTime 列表
   static List<DateTime> generateReminderTimes({
-    required String wakeTime,
-    required String bedTime,
     required int intervalMinutes,
+    required bool noonDnd,
+    required bool nightDnd,
+    String noonDndStart = '12:30',
+    String noonDndEnd = '14:30',
+    String nightDndStart = '22:00',
+    String nightDndEnd = '08:00',
     bool skipPast = true,
   }) {
     final now = DateTime.now();
-    final wake = _parseTime(now, wakeTime);
-    var bed = _parseTime(now, bedTime);
-    // 如果睡觉时间在起床时间之前(跨天),加一天
-    if (!bed.isAfter(wake)) {
-      bed = bed.add(const Duration(days: 1));
-    }
+    final dayStart = DateTime(now.year, now.month, now.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
 
     final times = <DateTime>[];
-    var current = wake;
-    while (current.isBefore(bed)) {
-      // skipPast=true 时只添加今天还没过去的时间(用于闹钟)
-      // skipPast=false 时添加所有时间点(用于日历,因为每日重复)
-      if (!skipPast || current.isAfter(now)) {
-        times.add(current);
+    var current = dayStart;
+    while (current.isBefore(dayEnd)) {
+      final hm = current.hour * 60 + current.minute;
+      final inNoon = noonDnd && _inWindow(hm, noonDndStart, noonDndEnd);
+      final inNight = nightDnd && _inWindow(hm, nightDndStart, nightDndEnd);
+      if (!inNoon && !inNight) {
+        // skipPast=true 时只添加今天还没过去的时间(用于闹钟)
+        // skipPast=false 时添加所有时间点(用于日历,因为每日重复)
+        if (!skipPast || current.isAfter(now)) {
+          times.add(current);
+        }
       }
       current = current.add(Duration(minutes: intervalMinutes));
     }
     return times;
   }
 
-  static DateTime _parseTime(DateTime base, String timeStr) {
-    final parts = timeStr.split(':');
-    if (parts.length != 2) return DateTime(base.year, base.month, base.day, 8);
-    final h = int.tryParse(parts[0]) ?? 8;
-    final m = int.tryParse(parts[1]) ?? 0;
-    return DateTime(base.year, base.month, base.day, h, m);
+  static bool _inWindow(int minuteOfDay, String start, String end) {
+    final s = _parseHm(start);
+    final e = _parseHm(end);
+    if (e > s) {
+      return minuteOfDay >= s && minuteOfDay < e;
+    }
+    return minuteOfDay >= s || minuteOfDay < e;
+  }
+
+  static int _parseHm(String t) {
+    final parts = t.split(':');
+    final h = int.tryParse(parts.isEmpty ? '' : parts[0]) ?? 0;
+    final m = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+    return h.clamp(0, 23) * 60 + m.clamp(0, 59);
   }
 
   // ============ 日历操作 ============
@@ -85,7 +99,7 @@ class CalendarAlarmService {
   static Future<List<CalendarEventRef>> batchAddCalendarEvents({
     required String title,
     required List<DateTime> times,
-    String description = '该喝水啦~ 起身动动,接杯水喝一口吧',
+    String description = '到时间啦~ 起来动一动,舒展一下身体吧',
   }) async {
     final refs = <CalendarEventRef>[];
 
@@ -187,7 +201,7 @@ class CalendarAlarmService {
   static Future<bool> setAlarm({
     required int hour,
     required int minute,
-    String label = '喝水提醒',
+    String label = '动一动',
   }) async {
     try {
       final intent = AndroidIntent(
