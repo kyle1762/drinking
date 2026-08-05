@@ -430,6 +430,74 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
     });
   }
 
+  /// 添加单个食材:追加后重新归一化占比、重算营养
+  Future<void> _addIngredient() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('添加食材'),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '如:米饭,鸡蛋,豆腐'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim()),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    nameCtrl.dispose();
+    if (name == null || name.isEmpty) return;
+    if (!context.mounted) return;
+
+    final exists = _ingredients.any((e) => e.name == name);
+    if (exists) {
+      messenger.showSnackBar(SnackBar(content: Text('食材「$name」已在列表中')));
+      return;
+    }
+
+    setState(() => _lookingUp = true);
+
+    // 查询/补全新食材营养
+    var nut = FoodNutritionDB.lookup(name);
+    if (nut == null) {
+      debugPrint('[ManualFood] 添加食材未匹配,调用 AI 补全: $name');
+      nut = await AiService.lookupIngredientNutrition(name);
+      if (nut != null) {
+        FoodNutritionDB.addCustom(nut);
+        await StorageService.saveCustomFoodNutrition();
+      }
+    }
+    if (!context.mounted) return;
+
+    // 新食材占均分份额,已有食材按比例缩小,归一化保持总和为 1
+    final baseSum = _ingredients.fold<double>(0, (s, e) => s + e.ratio);
+    final newRatio = 1.0 / (_ingredients.length + 1);
+    final baseScale = baseSum > 0 ? (_ingredients.length / (_ingredients.length + 1)) / baseSum : 0.0;
+    final updated = <FoodIngredient>[
+      for (var e in _ingredients)
+        FoodIngredient(name: e.name, ratio: e.ratio * baseScale),
+      FoodIngredient(name: name, ratio: newRatio),
+    ];
+
+    setState(() {
+      _ingredients = updated;
+      _overrideNutrition = null; // 让营养随占比重新计算
+      _lookingUp = false;
+    });
+
+    messenger.showSnackBar(SnackBar(content: Text('已添加「$name」,占比与营养已重新计算')));
+  }
+
   /// 解析用户输入:
   /// - 单个菜名(无分隔符)→ 调用 AI 识别菜品中的食材及占比(可编辑)
   /// - 多个食材(逗号/顿号/空格分隔)→ 按等占比处理
@@ -778,6 +846,38 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
                             onDeleted: () => _removeIngredient(i),
                           );
                         }).toList(),
+                      ),
+                      const SizedBox(height: 4),
+                      // 追加单个食材(重新归一化占比与营养)
+                      RippleButton(
+                        onTap: _lookingUp ? null : _addIngredient,
+                        borderRadius: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppColors.cream,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppColors.divider,
+                              width: 0.5,
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.add,
+                                  size: 14, color: AppColors.softBlueDeep),
+                              SizedBox(width: 4),
+                              Text('添加食材',
+                                  style: TextStyle(
+                                    color: AppColors.softBlueDeep,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  )),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 8),
                       // 每100g营养:点击可手动修改(覆盖基于食材计算的结果)
