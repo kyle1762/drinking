@@ -4,20 +4,13 @@
 /// 实际阈值会根据用户 BMR 动态调整,见 [UserProfile.forbiddenWarningThreshold]
 const double kDefaultForbiddenWarningThreshold = 150;
 
-/// 计算一次记录中「避免吃」食材的总克数(用于红色摄入过多提醒)
-/// [totalRatio] 为食材占比总和(用户编辑后可能≠1),>0 时按此归一化,
-/// 保证红色克数与营养计算口径一致;为 null 或 <=0 时直接用原始占比。
+/// 计算一次记录中「避免吃」食材的总克数(用于红色摄入过多提醒),
+/// 委托给 [DietMethods.forbiddenGramsOf] 以便复用与测试。
 double _forbiddenGramsOf(List<FoodIngredient> ings, double amount,
     DietMethod? method,
     {double? totalRatio}) {
-  final sum = (totalRatio != null && totalRatio > 0) ? totalRatio : 1.0;
-  double grams = 0;
-  for (final ing in ings) {
-    if (DietMethods.classify(ing.name, method) == DietFoodStatus.forbidden) {
-      grams += amount * ing.ratio / sum;
-    }
-  }
-  return grams;
+  return DietMethods.forbiddenGramsOf(ings, amount, method,
+      totalRatio: totalRatio);
 }
 
 /// 记录食物后,若今日摄入「避免吃」食材超过警戒值,弹出提醒(每天最多一次)

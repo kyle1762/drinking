@@ -317,4 +317,50 @@ void main() {
       expect(DietMethods.classify('白米饭', lowCarb), DietFoodStatus.forbidden);
     });
   });
+
+  group('DietMethods.forbiddenGramsOf 红色克数归一化', () {
+    test('总占比为 1 时(正常情况)直接按占比计算', () {
+      final med = DietMethods.findById('mediterranean')!;
+      final ings = [
+        const FoodIngredient(name: '牛肉', ratio: 0.5), // forbidden
+        const FoodIngredient(name: '番茄', ratio: 0.5), // allowed
+      ];
+      // 200g 食物,红色(牛肉)占比 0.5 = 100g
+      expect(DietMethods.forbiddenGramsOf(ings, 200, med), closeTo(100, 0.001));
+    });
+
+    test('用户编辑后总占比≠1 时按 totalRatio 归一化,与营养口径一致', () {
+      final med = DietMethods.findById('mediterranean')!;
+      // 用户编辑后占比之和为 2.0(如误调大),归一化后红色克数 = 200 * 1.0/2.0 = 100g
+      final ings = [
+        const FoodIngredient(name: '牛肉', ratio: 1.0),
+        const FoodIngredient(name: '番茄', ratio: 1.0),
+      ];
+      expect(
+          DietMethods.forbiddenGramsOf(ings, 200, med, totalRatio: 2.0),
+          closeTo(100, 0.001));
+      // 占比之和 < 1(如 0.6):红色 200*0.3/0.6 = 100g
+      final low = [
+        const FoodIngredient(name: '牛肉', ratio: 0.3),
+        const FoodIngredient(name: '番茄', ratio: 0.3),
+      ];
+      expect(
+          DietMethods.forbiddenGramsOf(low, 200, med, totalRatio: 0.6),
+          closeTo(100, 0.001));
+    });
+
+    test('未传 totalRatio 或占比为 0 时直接用原始占比', () {
+      final med = DietMethods.findById('mediterranean')!;
+      const ings = [FoodIngredient(name: '牛肉', ratio: 0.4)];
+      expect(DietMethods.forbiddenGramsOf(ings, 200, med), closeTo(80, 0.001));
+      expect(
+          DietMethods.forbiddenGramsOf(ings, 200, med, totalRatio: 0),
+          closeTo(80, 0.001));
+    });
+
+    test('无方案(null method)时所有食材判为中性,克数为 0', () {
+      const ings = [FoodIngredient(name: '牛肉', ratio: 0.5)];
+      expect(DietMethods.forbiddenGramsOf(ings, 200, null), 0);
+    });
+  });
 }

@@ -131,6 +131,23 @@ class DietMethods {
     return DietFoodStatus.neutral;
   }
 
+  /// 计算一次记录中「避免吃」食材的总克数(用于红色摄入过多提醒)
+  ///
+  /// [totalRatio] 为食材占比总和(用户编辑后可能≠1),>0 时按此归一化,
+  /// 保证红色克数与营养计算口径一致;为 null 或 <=0 时直接用原始占比。
+  static double forbiddenGramsOf(List<FoodIngredient> ings, double amount,
+      DietMethod? method,
+      {double? totalRatio}) {
+    final sum = (totalRatio != null && totalRatio > 0) ? totalRatio : 1.0;
+    double grams = 0;
+    for (final ing in ings) {
+      if (classify(ing.name, method) == DietFoodStatus.forbidden) {
+        grams += amount * ing.ratio / sum;
+      }
+    }
+    return grams;
+  }
+
   /// 去除括号说明后取主体,如「水果(少量莓果除外)」->「水果」
   static String _normalizeTerm(String s) {
     var t = s.trim();
