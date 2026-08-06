@@ -340,15 +340,18 @@ class FoodRecord {
 /// 周记录(每周末记录一次 BMI 和本周消耗热量)
 class WeeklyRecord {
   final String id;
-  final DateTime date; // 记录日期(周末)
+  final DateTime date; // 记录日期(周日)
   final double? bmi; // 当日 BMI
   final int weeklyBurnCalories; // 本周累计消耗热量 kcal
+  // 本周(周一~周日)每日运动消耗热量 kcal,索引 0=周一;旧数据可能为空
+  final List<int> dailyBurnCalories;
 
   WeeklyRecord({
     required this.id,
     required this.date,
     required this.bmi,
     required this.weeklyBurnCalories,
+    this.dailyBurnCalories = const [],
   });
 
   Map<String, dynamic> toJson() => {
@@ -356,14 +359,22 @@ class WeeklyRecord {
         'date': date.toIso8601String(),
         'bmi': bmi,
         'weeklyBurnCalories': weeklyBurnCalories,
+        if (dailyBurnCalories.isNotEmpty)
+          'dailyBurnCalories': dailyBurnCalories,
       };
 
   factory WeeklyRecord.fromJson(Map<String, dynamic> json) {
+    final daily = (json['dailyBurnCalories'] as List?)
+            ?.whereType<num>()
+            .map((e) => e.toInt())
+            .toList() ??
+        const <int>[];
     return WeeklyRecord(
       id: json['id'] as String,
       date: DateTime.parse(json['date'] as String),
       bmi: (json['bmi'] as num?)?.toDouble(),
       weeklyBurnCalories: (json['weeklyBurnCalories'] as num).toInt(),
+      dailyBurnCalories: daily,
     );
   }
 }

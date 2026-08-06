@@ -273,6 +273,23 @@ class AppState extends ChangeNotifier {
         .fold(0, (s, r) => s + r.calories);
   }
 
+  /// 本周(周一~周日)每日运动消耗热量 kcal,索引 0=周一
+  List<int> get thisWeekDailyBurn {
+    final now = DateTime.now();
+    final weekDay = now.weekday;
+    final monday = now.subtract(Duration(days: weekDay - 1));
+    final startOfWeek = DateTime(monday.year, monday.month, monday.day);
+    final daily = List<int>.filled(7, 0);
+    for (final r in _exerciseRecords) {
+      if (r.time.isBefore(startOfWeek)) continue;
+      final days = r.time.difference(startOfWeek).inDays;
+      if (days >= 0 && days < 7) {
+        daily[days] += r.calories;
+      }
+    }
+    return daily;
+  }
+
   // ============ 饮食建议(增肌/减脂/保持) ============
 
   /// 当前有效的建议摄入热量(kcal)
@@ -695,6 +712,7 @@ class AppState extends ChangeNotifier {
       date: now,
       bmi: _profile.bmi,
       weeklyBurnCalories: thisWeekBurnCalories,
+      dailyBurnCalories: thisWeekDailyBurn,
     );
     _weeklyRecords.add(record);
     // 仅保留最近 12 周
