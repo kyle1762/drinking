@@ -66,6 +66,29 @@ void main() {
           .profileComplete, isFalse);
       expect(const UserProfile().profileComplete, isFalse);
     });
+
+    test('forbiddenWarningThreshold 按 BMR/10 计算并 clamp 到 100-250', () {
+      // 男 30/175/70 -> BMR 1649 -> 164.9
+      const m = UserProfile(gender: Gender.male, age: 30, height: 175, weight: 70);
+      expect(m.forbiddenWarningThreshold, closeTo(164.9, 0.001));
+      // 女 30/175/70 -> BMR 1483 -> 148.3
+      const f = UserProfile(gender: Gender.female, age: 30, height: 175, weight: 70);
+      expect(f.forbiddenWarningThreshold, closeTo(148.3, 0.001));
+      // 极小体型 clamp 到下限 100
+      const tiny = UserProfile(gender: Gender.female, age: 60, height: 150, weight: 40);
+      // BMR = 400 + 937.5 - 300 - 161 = 876.5 -> 877 -> 87.7 -> clamp 100
+      expect(tiny.forbiddenWarningThreshold, 100);
+      // 极大体型 clamp 到上限 250
+      const big = UserProfile(gender: Gender.male, age: 20, height: 200, weight: 120);
+      // BMR = 1200 + 1250 - 100 + 5 = 2355 -> 235.5 (<250)
+      expect(big.forbiddenWarningThreshold, closeTo(235.5, 0.001));
+    });
+
+    test('forbiddenWarningThreshold 信息不全时回退默认 150', () {
+      expect(const UserProfile().forbiddenWarningThreshold, 150);
+      expect(const UserProfile(gender: Gender.male, age: 30, weight: 70)
+          .forbiddenWarningThreshold, 150);
+    });
   });
 
   group('UserProfile 序列化', () {

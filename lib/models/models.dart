@@ -147,6 +147,17 @@ class UserProfile {
     return 1200; // 默认按较低值
   }
 
+  /// 「避免吃」食材的每日红色警戒阈值(g)
+  ///
+  /// 按身体信息(基础代谢量 BMR)粗略分段:阈值 = BMR / 10,
+  /// 并 clamp 到 [100, 250]。BMR 越高越不容易被红色警报误伤,
+  /// 反之越敏感;身体信息未填全时回退到默认 150g。
+  double get forbiddenWarningThreshold {
+    final bmr = this.bmr;
+    if (bmr == null) return 150;
+    return (bmr / 10).clamp(100.0, 250.0);
+  }
+
   /// 个人信息是否已填全(用于判断能否计算 BMR)
   bool get profileComplete =>
       gender != Gender.unspecified && age > 0 && height > 0 && weight > 0;

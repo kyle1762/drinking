@@ -1,15 +1,20 @@
 ﻿part of 'ai_recognition_page.dart';
 
-/// 今日摄入「避免吃」食材的克数警戒值,超过则弹出红色摄入提醒
-const double kForbiddenWarningThreshold = 150;
+/// 今日摄入「避免吃」食材的克数警戒值(默认),超过则弹出红色摄入提醒
+/// 实际阈值会根据用户 BMR 动态调整,见 [UserProfile.forbiddenWarningThreshold]
+const double kDefaultForbiddenWarningThreshold = 150;
 
 /// 计算一次记录中「避免吃」食材的总克数(用于红色摄入过多提醒)
-double _forbiddenGramsOf(
-    List<FoodIngredient> ings, double amount, DietMethod? method) {
+/// [totalRatio] 为食材占比总和(用户编辑后可能≠1),>0 时按此归一化,
+/// 保证红色克数与营养计算口径一致;为 null 或 <=0 时直接用原始占比。
+double _forbiddenGramsOf(List<FoodIngredient> ings, double amount,
+    DietMethod? method,
+    {double? totalRatio}) {
+  final sum = (totalRatio != null && totalRatio > 0) ? totalRatio : 1.0;
   double grams = 0;
   for (final ing in ings) {
     if (DietMethods.classify(ing.name, method) == DietFoodStatus.forbidden) {
-      grams += amount * ing.ratio;
+      grams += amount * ing.ratio / sum;
     }
   }
   return grams;
@@ -20,7 +25,8 @@ Future<void> _maybeShowForbiddenWarning(BuildContext context, AppState s) async 
   final today =
       '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2, '0')}-${DateTime.now().day.toString().padLeft(2, '0')}';
   if (StorageService.getForbiddenWarnedDate() == today) return;
-  if (s.todayForbiddenGrams < kForbiddenWarningThreshold) return;
+  final threshold = s.profile.forbiddenWarningThreshold;
+  if (s.todayForbiddenGrams < threshold) return;
   StorageService.saveForbiddenWarnedDate(today);
   if (!context.mounted) return;
   final text = StorageService.getForbiddenWarningText();
@@ -46,7 +52,7 @@ Future<void> _maybeShowForbiddenWarning(BuildContext context, AppState s) async 
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '今日已摄入避免吃食材 ${s.todayForbiddenGrams.round()}g,超过警戒值 ${kForbiddenWarningThreshold.round()}g',
+            '今日已摄入避免吃食材 ${s.todayForbiddenGrams.round()}g,超过警戒值 ${threshold.round()}g(根据您的身体信息自动计算)',
             style: const TextStyle(
                 color: AppColors.textSecondary, fontSize: 12, height: 1.4),
           ),
@@ -629,7 +635,9 @@ class _ManualFoodSheetState extends State<_ManualFoodSheet> {
     final nut = _nutrition;
     final name = _ingredients.map((e) => e.name).join('+');
     final method = DietMethods.findByIdFor(s.profile.goal, s.profile.dietMethodId);
-    final forbiddenGrams = _forbiddenGramsOf(_ingredients, _amount, method);
+    final forbiddenGrams = _forbiddenGramsOf(
+        _ingredients, _amount, method,
+        totalRatio: _ratioSum);
     s.addFoodRecord(FoodRecord(
       id: 'f${DateTime.now().millisecondsSinceEpoch}',
       time: DateTime.now(),
@@ -2746,8 +2754,10 @@ class _ResultSheetState extends State<_ResultSheet> {
     if (isFood) {
       final method =
           DietMethods.findByIdFor(s.profile.goal, s.profile.dietMethodId);
-      final forbiddenGrams =
-          _forbiddenGramsOf(_activeIngredients, _amount, method);
+      final forbiddenGrams = _forbiddenGramsOf(
+          _activeIngredients, _amount, method,
+          totalRatio: _activeIngredients
+              .fold<double>(0, (s, e) => s + e.ratio));
       s.addFoodRecord(FoodRecord(
         id: 'f${DateTime.now().millisecondsSinceEpoch}',
         time: DateTime.now(),
