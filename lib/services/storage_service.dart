@@ -44,8 +44,6 @@ class StorageService {
   static const kNoonDndEnd = 'noonDndEnd';
   static const kNightDndStart = 'nightDndStart';
   static const kNightDndEnd = 'nightDndEnd';
-  // 日历提醒自动同步开关(每次间隔/免打扰变化时自动删旧日历事件再加新)
-  static const kCalendarAutoSync = 'calendarAutoSync';
   static const kRememberSyncFeishu = 'rememberSyncFeishu';
   static const kRecords = 'records';
   static const kAiApiKey = 'aiApiKey';
@@ -175,7 +173,6 @@ class StorageService {
       noonDndEnd: p.getString(kNoonDndEnd) ?? '14:30',
       nightDndStart: p.getString(kNightDndStart) ?? '22:00',
       nightDndEnd: p.getString(kNightDndEnd) ?? '08:00',
-      calendarAutoSync: p.getBool(kCalendarAutoSync) ?? false,
       hasPromptedNoonDnd: p.getBool(kHasPromptedNoonDnd) ?? false,
       rememberSyncFeishu: p.getBool(kRememberSyncFeishu) ?? true,
       records: _loadRecords(),
@@ -312,10 +309,6 @@ class StorageService {
     if (end != null) _p.setString(kNightDndEnd, end);
     return Future.value();
   }
-
-  // ---- 日历提醒自动同步开关 ----
-  static Future<void> saveCalendarAutoSync(bool v) =>
-      _p.setBool(kCalendarAutoSync, v);
 
   /// 读取上次提醒更新个人信息的日期(yyyy-MM-dd)
   static String getLastProfileRemindDate() =>
@@ -494,7 +487,6 @@ class StorageService {
       kNoonDndEnd,
       kNightDndStart,
       kNightDndEnd,
-      kCalendarAutoSync,
       kHasPromptedNoonDnd,
       kRememberSyncFeishu,
       kRecords,
@@ -543,7 +535,6 @@ class StoredData {
   final String noonDndEnd;
   final String nightDndStart;
   final String nightDndEnd;
-  final bool calendarAutoSync;
   final bool hasPromptedNoonDnd;
   final bool rememberSyncFeishu;
   final List<WaterRecord> records;
@@ -577,7 +568,6 @@ class StoredData {
     required this.noonDndEnd,
     required this.nightDndStart,
     required this.nightDndEnd,
-    required this.calendarAutoSync,
     required this.hasPromptedNoonDnd,
     required this.rememberSyncFeishu,
     required this.records,

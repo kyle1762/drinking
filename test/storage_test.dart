@@ -11,13 +11,12 @@ void main() {
   });
 
   group('免打扰时段持久化', () {
-    test('默认值:午休 12:30-14:30,夜间 22:00-08:00,自动同步关闭', () {
+    test('默认值:午休 12:30-14:30,夜间 22:00-08:00', () {
       final data = StorageService.loadAll();
       expect(data.noonDndStart, '12:30');
       expect(data.noonDndEnd, '14:30');
       expect(data.nightDndStart, '22:00');
       expect(data.nightDndEnd, '08:00');
-      expect(data.calendarAutoSync, isFalse);
     });
 
     test('保存午休/夜间时段后 loadAll 读回一致', () async {
@@ -35,13 +34,6 @@ void main() {
       final data = StorageService.loadAll();
       expect(data.noonDndStart, '11:00');
       expect(data.noonDndEnd, '14:30');
-    });
-
-    test('日历自动同步开关持久化', () async {
-      await StorageService.saveCalendarAutoSync(true);
-      expect(StorageService.loadAll().calendarAutoSync, isTrue);
-      await StorageService.saveCalendarAutoSync(false);
-      expect(StorageService.loadAll().calendarAutoSync, isFalse);
     });
   });
 }

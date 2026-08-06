@@ -140,7 +140,6 @@ class AppState extends ChangeNotifier {
   String _noonDndEnd = '14:30';
   String _nightDndStart = '22:00';
   String _nightDndEnd = '08:00';
-  bool _calendarAutoSync = false; // 日历提醒自动同步开关
 
   bool get nightDnd => _nightDnd;
   bool get noonDnd => _noonDnd;
@@ -149,7 +148,6 @@ class AppState extends ChangeNotifier {
   String get noonDndEnd => _noonDndEnd;
   String get nightDndStart => _nightDndStart;
   String get nightDndEnd => _nightDndEnd;
-  bool get calendarAutoSync => _calendarAutoSync;
 
   // ============ 喝水记录 ============
   final List<WaterRecord> _records = [];
@@ -554,7 +552,6 @@ class AppState extends ChangeNotifier {
     _noonDndEnd = d.noonDndEnd;
     _nightDndStart = d.nightDndStart;
     _nightDndEnd = d.nightDndEnd;
-    _calendarAutoSync = d.calendarAutoSync;
     _hasPromptedNoonDnd = d.hasPromptedNoonDnd;
     _rememberSyncToFeishu = d.rememberSyncFeishu;
     // 仅加载最近 60 天的记录,避免无限增长
@@ -1050,13 +1047,6 @@ class AppState extends ChangeNotifier {
     _nightDndStart = start;
     _nightDndEnd = end;
     StorageService.saveNightDndTime(start: start, end: end);
-    notifyListeners();
-  }
-
-  /// 设置日历提醒自动同步开关
-  void setCalendarAutoSync(bool v) {
-    _calendarAutoSync = v;
-    StorageService.saveCalendarAutoSync(v);
     notifyListeners();
   }
 

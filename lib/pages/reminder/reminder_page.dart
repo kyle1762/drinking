@@ -32,7 +32,6 @@ class ReminderPage extends StatelessWidget {
             const _TodayRecordExpandable(),
             _ReminderModule(),
             _DndModule(),
-            _CalendarAlarmModule(),
             const SizedBox(height: 16),
           ],
         ),
@@ -247,6 +246,11 @@ class _LoopReminder extends StatelessWidget {
             const SizedBox(height: 6),
             const Text('点击 20/60 分钟快速切换,或点击 ±5 分钟微调(最小1分钟)',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            // 日历同步:自动同步(删旧建新) + 删除全部日历
+            const _CalendarSyncButtons(),
           ],
         ),
       ),
@@ -537,59 +541,28 @@ class _DndModuleState extends State<_DndModule> {
   }
 }
 
-/// 日历批量操作模块
-/// 用户可将提醒时间批量添加到手机日历,支持一键清除
-class _CalendarAlarmModule extends StatefulWidget {
+/// 日历同步按钮组(内嵌于定时提醒卡片,位于免打扰上方)
+/// - 自动同步:删除上次日历事件后,按当前间隔重新生成并添加(每日重复)
+/// - 删除日历:删除本软件添加过的全部日历事件
+class _CalendarSyncButtons extends StatefulWidget {
+  const _CalendarSyncButtons();
+
   @override
-  State<_CalendarAlarmModule> createState() => _CalendarAlarmModuleState();
+  State<_CalendarSyncButtons> createState() => _CalendarSyncButtonsState();
 }
 
-class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
+class _CalendarSyncButtonsState extends State<_CalendarSyncButtons> {
   List<CalendarEventRef> _calendarRefs = [];
   bool _loading = false;
-  // 上次同步时的配置指纹(间隔+免打扰),变化时自动重新同步
-  String _lastSyncFingerprint = '';
-  late final AppState _appState;
 
   @override
   void initState() {
     super.initState();
-    _appState = context.read<AppState>();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
-    _appState.addListener(_onConfigChanged);
+    _calendarRefs = StorageService.loadCalendarEventIds();
   }
 
-  @override
-  void dispose() {
-    _appState.removeListener(_onConfigChanged);
-    super.dispose();
-  }
-
-  /// 间隔/免打扰配置变化时,若开启了自动同步则重新生成日历事件
-  void _onConfigChanged() {
-    if (!mounted) return;
-    final s = _appState;
-    if (!s.calendarAutoSync) {
-      _lastSyncFingerprint = _fingerprint(s);
-      return;
-    }
-    final fp = _fingerprint(s);
-    if (fp == _lastSyncFingerprint) return;
-    _lastSyncFingerprint = fp;
-    _batchAddCalendar();
-  }
-
-  String _fingerprint(AppState s) =>
-      '${s.loopInterval}|${s.noonDnd}|${s.nightDnd}|${s.noonDndStart}|${s.noonDndEnd}|${s.nightDndStart}|${s.nightDndEnd}';
-
-  void _loadData() {
-    setState(() {
-      _calendarRefs = StorageService.loadCalendarEventIds();
-    });
-  }
-
-  /// 批量添加日历事件
-  Future<void> _batchAddCalendar() async {
+  /// 自动同步:先删除上次日历事件,再按当前间隔重建
+  Future<void> _syncCalendar() async {
     final s = context.read<AppState>();
     // 日历事件为每日重复,需包含全天所有时间点(不跳过已过去的时间),
     // 提醒从 0:00 起按间隔对齐;免打扰全部关闭时覆盖全天 0:00-24:00
@@ -629,7 +602,7 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
           SnackBar(
             content: Text(refs.isEmpty
                 ? '日历事件添加失败,请检查日历权限'
-                : '已添加 ${refs.length} 个日历提醒事件(每日重复)'),
+                : '已同步 ${refs.length} 个日历提醒事件(每日重复)'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -638,13 +611,13 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
       if (mounted) {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('日历添加异常: $e')),
+          SnackBar(content: Text('日历同步异常: $e')),
         );
       }
     }
   }
 
-  /// 一键清除上次添加的日历事件
+  /// 删除本软件添加过的全部日历事件(带确认)
   void _clearAll() {
     if (_calendarRefs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -655,14 +628,13 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
 
     AppDialogs.confirm(
       context,
-      title: '一键清除',
-      content: '将删除 ${_calendarRefs.length} 个日历事件。是否继续?',
-      confirmText: '清除',
+      title: '删除日历',
+      content: '将删除本软件添加过的 ${_calendarRefs.length} 个日历事件。是否继续?',
+      confirmText: '删除',
       onConfirm: () => _performClear(),
     );
   }
 
-  /// 执行一键清除(在确认对话框后调用)
   Future<void> _performClear() async {
     setState(() => _loading = true);
 
@@ -686,139 +658,68 @@ class _CalendarAlarmModuleState extends State<_CalendarAlarmModule> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
       children: [
-        const SectionTitle('日历'),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: CreamCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 说明文字
-                const Row(
-                  children: [
-                    Icon(Icons.event_available_outlined,
-                        size: 16, color: AppColors.softBlueDeep),
-                    SizedBox(width: 6),
-                    Expanded(
-                      child: Text('将提醒时间批量添加到手机日历',
-                          style: TextStyle(
-                              color: AppColors.textSecondary, fontSize: 12)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                // 自动同步开关
-                Row(
-                  children: [
-                    const Icon(Icons.sync_alt,
-                        size: 16, color: AppColors.mintDeep),
-                    const SizedBox(width: 6),
-                    const Expanded(
-                      child: Text('自动同步',
-                          style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600)),
-                    ),
-                    Switch(
-                      value: context.watch<AppState>().calendarAutoSync,
-                      activeThumbColor: AppColors.mintDeep,
-                      onChanged: (v) {
-                        final s = context.read<AppState>();
-                        s.setCalendarAutoSync(v);
-                        // 开启自动同步时,立即同步一次(覆盖非当日区间生成的旧事件)
-                        if (v) {
-                          _lastSyncFingerprint = '';
-                          _onConfigChanged();
-                        }
-                      },
-                    ),
-                  ],
-                ),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 4),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                        '开启后,间隔或免打扰时段变化时自动删除旧日历事件并重新添加',
-                        style:
-                            TextStyle(color: AppColors.textSecondary, fontSize: 11)),
-                  ),
-                ),
-                const SizedBox(height: 8),
-
-                // 添加日历按钮
-                SizedBox(
-                  width: double.infinity,
-                  child: RippleButton(
-                    onTap: _loading ? null : _batchAddCalendar,
-                    borderRadius: AppThemeRadius.s,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.mint,
-                        borderRadius: BorderRadius.circular(AppThemeRadius.s),
-                      ),
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.calendar_today_outlined,
-                              size: 16, color: AppColors.mintDeep),
-                          const SizedBox(width: 6),
-                          Text(
-                            _loading
-                                ? '正在添加...'
-                                : '添加日历提醒 ${_calendarRefs.isNotEmpty ? "(已添加${_calendarRefs.length}个)" : ""}',
-                            style: const TextStyle(
-                                color: AppColors.mintDeep,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                // 一键清除按钮
-                if (_calendarRefs.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: RippleButton(
-                      onTap: _loading ? null : _clearAll,
-                      borderRadius: AppThemeRadius.s,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: AppColors.paused,
-                          borderRadius:
-                              BorderRadius.circular(AppThemeRadius.s),
-                          border: Border.all(
-                              color: AppColors.textSecondary.withAlpha(50)),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.delete_outline,
-                                size: 16, color: AppColors.textSecondary),
-                            SizedBox(width: 6),
-                            Text('一键清除上次添加的日历事件',
-                                style: TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600)),
-                          ],
-                        ),
-                      ),
-                    ),
+        // 自动同步按钮(主按钮)
+        Expanded(
+          child: RippleButton(
+            onTap: _loading ? null : _syncCalendar,
+            borderRadius: AppThemeRadius.s,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.mint,
+                borderRadius: BorderRadius.circular(AppThemeRadius.s),
+              ),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.sync_alt,
+                      size: 16, color: AppColors.mintDeep),
+                  const SizedBox(width: 6),
+                  Text(
+                    _loading ? '同步中...' : '自动同步到日历',
+                    style: const TextStyle(
+                        color: AppColors.mintDeep,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600),
                   ),
                 ],
-              ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        // 删除全部日历按钮
+        Expanded(
+          child: RippleButton(
+            onTap: _loading ? null : _clearAll,
+            borderRadius: AppThemeRadius.s,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.paused,
+                borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                border: Border.all(
+                    color: AppColors.textSecondary.withAlpha(50)),
+              ),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.delete_outline,
+                      size: 16, color: AppColors.textSecondary),
+                  const SizedBox(width: 6),
+                  Text(
+                    _calendarRefs.isEmpty ? '删除日历' : '删除日历(${_calendarRefs.length})',
+                    style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
