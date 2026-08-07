@@ -156,7 +156,7 @@ class _TodayRecordList extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _ManualExerciseSheet(initial: record),
+      builder: (ctx) => _ExerciseRecordSheet(initial: record),
     );
   }
 

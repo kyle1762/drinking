@@ -1836,7 +1836,7 @@ class _ActionCards extends StatelessWidget {
     if (source == null) return;
     if (!context.mounted) return;
 
-    // 手动输入
+    // 手动输入:同样进入统一记录界面
     if (source == _ImageSource.manual) {
       if (!context.mounted) return;
       showModalBottomSheet(
@@ -1844,8 +1844,8 @@ class _ActionCards extends StatelessWidget {
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
         builder: (ctx) => isFood
-            ? const _ManualFoodSheet()
-            : const _ManualExerciseSheet(),
+            ? const _FoodRecordSheet()
+            : const _ExerciseRecordSheet(),
       );
       return;
     }
@@ -1889,7 +1889,9 @@ class _ActionCards extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _ResultSheet(result: result),
+      builder: (ctx) => isFood
+          ? _FoodRecordSheet(result: result)
+          : _ExerciseRecordSheet(result: result),
     );
   }
 }

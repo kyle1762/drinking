@@ -5,6 +5,7 @@ import '../services/storage_service.dart';
 import '../services/feishu_service.dart';
 import '../services/alarm_service.dart';
 import '../services/ai_service.dart';
+import '../services/calendar_alarm_service.dart';
 
 /// 全局状态 - 单一数据源(安卓ViewModel统一数据源)
 /// 三页面共享:账号三态、全局参数单向同步、提醒/记录/飞书配置
@@ -74,9 +75,6 @@ class AppState extends ChangeNotifier {
   int _todayReminderCount = 0;
   int get todayReminderCount => _todayReminderCount;
 
-  /// 上次提醒时间
-  DateTime? _lastReminderTime;
-
   /// 下次闹钟触发时间(由 AlarmService 写入 SharedPreferences,精确值)
   DateTime? _nextAlarmTime;
 
@@ -88,7 +86,6 @@ class AppState extends ChangeNotifier {
       final todayStr = '${today.year}-${today.month}-${today.day}';
       final savedDateStr = prefs.getString(StorageService.kTodayReminderDate);
       final count = prefs.getInt(StorageService.kTodayReminderCount) ?? 0;
-      final lastStr = prefs.getString(StorageService.kLastReminderTime);
       final nextStr = prefs.getString(StorageService.kNextAlarmTime);
 
       // 日期变更则重置
@@ -98,7 +95,6 @@ class AppState extends ChangeNotifier {
         _todayReminderCount = count;
       }
 
-      _lastReminderTime = lastStr != null ? DateTime.tryParse(lastStr) : null;
       _nextAlarmTime = nextStr != null ? DateTime.tryParse(nextStr) : null;
       notifyListeners();
     });
@@ -113,12 +109,17 @@ class AppState extends ChangeNotifier {
     if (_nextAlarmTime != null && _nextAlarmTime!.isAfter(now)) {
       return '${_nextAlarmTime!.hour.toString().padLeft(2, '0')}:${_nextAlarmTime!.minute.toString().padLeft(2, '0')}';
     }
-    // 回退:基于上次提醒时间 + 间隔计算
-    final base = _lastReminderTime ?? now;
-    final next = base.add(Duration(minutes: _loopInterval));
-    final actualNext =
-        next.isAfter(now) ? next : now.add(Duration(minutes: _loopInterval));
-    return '${actualNext.hour.toString().padLeft(2, '0')}:${actualNext.minute.toString().padLeft(2, '0')}';
+    // 回退:基于日历网格对齐的下一次提醒时间(与日历/闹钟同规则)
+    final aligned = CalendarAlarmService.nextReminderTime(
+      intervalMinutes: _loopInterval,
+      noonDnd: _noonDnd,
+      nightDnd: _nightDnd,
+      noonDndStart: _noonDndStart,
+      noonDndEnd: _noonDndEnd,
+      nightDndStart: _nightDndStart,
+      nightDndEnd: _nightDndEnd,
+    );
+    return '${aligned.hour.toString().padLeft(2, '0')}:${aligned.minute.toString().padLeft(2, '0')}';
   }
 
   // ============ 飞书推送 ============
@@ -1044,12 +1045,14 @@ class AppState extends ChangeNotifier {
     _nightDnd = v;
     StorageService.saveNightDnd(v);
     notifyListeners();
+    _rescheduleOnDndChange();
   }
 
   void setNoonDnd(bool v) {
     _noonDnd = v;
     StorageService.saveNoonDnd(v);
     notifyListeners();
+    _rescheduleOnDndChange();
   }
 
   /// 设置午休免打扰起止时间("HH:mm")
@@ -1058,6 +1061,7 @@ class AppState extends ChangeNotifier {
     _noonDndEnd = end;
     StorageService.saveNoonDndTime(start: start, end: end);
     notifyListeners();
+    _rescheduleOnDndChange();
   }
 
   /// 设置夜间免打扰起止时间("HH:mm")
@@ -1066,6 +1070,13 @@ class AppState extends ChangeNotifier {
     _nightDndEnd = end;
     StorageService.saveNightDndTime(start: start, end: end);
     notifyListeners();
+    _rescheduleOnDndChange();
+  }
+
+  /// 免打扰配置变化后重新对齐闹钟,保证下次提醒时间仍与日历网格一致
+  void _rescheduleOnDndChange() {
+    if (!_reminderEnabled || _reminderPaused) return;
+    applyLoopInterval(_loopInterval);
   }
 
   /// 标记已弹过午休免打扰询问(首启时调用一次)

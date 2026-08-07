@@ -89,4 +89,85 @@ void main() {
       expect(times.length, 24);
     });
   });
+
+  group('nextReminderTime 与日历网格对齐', () {
+    test('当前在 8:20,间隔 60,无免打扰 → 下一次是 9:00(从 0:00 对齐)', () {
+      final next = CalendarAlarmService.nextReminderTime(
+        intervalMinutes: 60,
+        noonDnd: false,
+        nightDnd: false,
+        now: DateTime(2026, 1, 1, 8, 20),
+      );
+      expect(next, DateTime(2026, 1, 1, 9, 0));
+    });
+
+    test('当前恰好在整点 8:00 → 下一次是 9:00(严格晚于当前)', () {
+      final next = CalendarAlarmService.nextReminderTime(
+        intervalMinutes: 60,
+        noonDnd: false,
+        nightDnd: false,
+        now: DateTime(2026, 1, 1, 8, 0),
+      );
+      expect(next, DateTime(2026, 1, 1, 9, 0));
+    });
+
+    test('当前 8:20,午休 12:30~14:30 → 跳过 13:00、14:00,下一次是 9:00', () {
+      final next = CalendarAlarmService.nextReminderTime(
+        intervalMinutes: 60,
+        noonDnd: true,
+        noonDndStart: '12:30',
+        noonDndEnd: '14:30',
+        nightDnd: false,
+        now: DateTime(2026, 1, 1, 8, 20),
+      );
+      expect(next, DateTime(2026, 1, 1, 9, 0));
+    });
+
+    test('当前 12:40,午休 12:30~14:30 → 跳过 13:00、14:00,下一次是 15:00', () {
+      final next = CalendarAlarmService.nextReminderTime(
+        intervalMinutes: 60,
+        noonDnd: true,
+        noonDndStart: '12:30',
+        noonDndEnd: '14:30',
+        nightDnd: false,
+        now: DateTime(2026, 1, 1, 12, 40),
+      );
+      expect(next, DateTime(2026, 1, 1, 15, 0));
+    });
+
+    test('当前 23:00,夜间免打扰 22:00~08:00 → 顺延到次日 8:00(8:00 是免打扰结束边界,保留)', () {
+      final next = CalendarAlarmService.nextReminderTime(
+        intervalMinutes: 60,
+        noonDnd: false,
+        nightDnd: true,
+        nightDndStart: '22:00',
+        nightDndEnd: '08:00',
+        now: DateTime(2026, 1, 1, 23, 0),
+      );
+      expect(next, DateTime(2026, 1, 2, 8, 0));
+    });
+
+    test('当前 3:00,夜间免打扰 22:00~08:00 → 当天 8:00 是结束边界,保留', () {
+      final next = CalendarAlarmService.nextReminderTime(
+        intervalMinutes: 60,
+        noonDnd: false,
+        nightDnd: true,
+        nightDndStart: '22:00',
+        nightDndEnd: '08:00',
+        now: DateTime(2026, 1, 1, 3, 0),
+      );
+      expect(next, DateTime(2026, 1, 1, 8, 0));
+    });
+
+    test('90 分钟间隔,当前 8:20 → 下一次按 0:00+90 网格为 9:00', () {
+      final next = CalendarAlarmService.nextReminderTime(
+        intervalMinutes: 90,
+        noonDnd: false,
+        nightDnd: false,
+        now: DateTime(2026, 1, 1, 8, 20),
+      );
+      // 网格: 0:00, 1:30, 3:00, 4:30, 6:00, 7:30, 9:00, ...
+      expect(next, DateTime(2026, 1, 1, 9, 0));
+    });
+  });
 }

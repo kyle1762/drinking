@@ -3,6 +3,7 @@ import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
 import 'storage_service.dart';
+import 'calendar_alarm_service.dart';
 
 /// 闹钟服务 - 基于 android_alarm_manager_plus
 /// 使用 oneShotAt(绝对时间) + 回调中重新注册的方式实现可靠循环
@@ -35,10 +36,24 @@ class AlarmService {
     if (intervalMinutes <= 0) return false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(StorageService.kLoopInterval, intervalMinutes);
-    // 计算下次提醒的绝对时间
-    final nextTime = DateTime.now().add(Duration(minutes: intervalMinutes));
+    // 计算下次提醒的绝对时间(与日历提醒时间网格对齐,确保本体闹钟与日历同步)
+    final nextTime = _nextAlignedTime(prefs, intervalMinutes);
     await prefs.setString(StorageService.kNextAlarmTime, nextTime.toIso8601String());
     return _scheduleNextLoopAt(nextTime);
+  }
+
+  /// 从 SharedPreferences 读取免打扰配置,计算与日历网格一致的下一次提醒时间
+  /// 与日历 [CalendarAlarmService.generateReminderTimes] 同规则:0:00 起按间隔对齐 + 跳过免打扰
+  static DateTime _nextAlignedTime(SharedPreferences prefs, int intervalMinutes) {
+    return CalendarAlarmService.nextReminderTime(
+      intervalMinutes: intervalMinutes,
+      noonDnd: prefs.getBool(StorageService.kNoonDnd) ?? false,
+      nightDnd: prefs.getBool(StorageService.kNightDnd) ?? true,
+      noonDndStart: prefs.getString(StorageService.kNoonDndStart) ?? '12:30',
+      noonDndEnd: prefs.getString(StorageService.kNoonDndEnd) ?? '14:30',
+      nightDndStart: prefs.getString(StorageService.kNightDndStart) ?? '22:00',
+      nightDndEnd: prefs.getString(StorageService.kNightDndEnd) ?? '08:00',
+    );
   }
 
   /// 在指定绝对时间注册下一次循环闹钟(更可靠,不受 Duration 计算偏差影响)
@@ -68,7 +83,7 @@ class AlarmService {
     final prefs = await SharedPreferences.getInstance();
     final interval = prefs.getInt(StorageService.kLoopInterval) ?? 0;
     if (interval > 0) {
-      final nextTime = DateTime.now().add(Duration(minutes: interval));
+      final nextTime = _nextAlignedTime(prefs, interval);
       await prefs.setString(StorageService.kNextAlarmTime, nextTime.toIso8601String());
       await _scheduleNextLoopAt(nextTime);
     }

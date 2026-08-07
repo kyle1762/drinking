@@ -178,17 +178,31 @@ class AiService {
 
       // 情况B:菜品/普通食物
       final dishName = json['dish'] as String? ?? json['name'] as String? ?? '未知菜品';
-      final ingredientsList = json['ingredients'] as List? ?? [];
-      final ingredients = <FoodIngredient>[];
-      double totalEnergy = 0;
-      double matchedRatio = 0;
+      var ingredients = <FoodIngredient>[];
 
+      final ingredientsList = json['ingredients'] as List? ?? [];
       for (final e in ingredientsList) {
         final ingName = e['name'] as String? ?? '';
         final ratio = (e['ratio'] as num?)?.toDouble() ?? 0;
         if (ingName.isEmpty || ratio <= 0) continue;
         ingredients.add(FoodIngredient(name: ingName, ratio: ratio));
+      }
 
+      // 若图片识别未返回食材,调用文本 AI 补充把菜品分解成食材,
+      // 避免把整道菜当作单一食材导致营养与红色判断失真
+      if (ingredients.isEmpty && dishName != '未知菜品') {
+        debugPrint('[AiService] 图片识别未返回食材,调用 AI 补充分解: $dishName');
+        final decomposed = await recognizeIngredientsFromDish(dishName);
+        if (decomposed != null && decomposed.isNotEmpty) {
+          ingredients = decomposed;
+        }
+      }
+
+      double totalEnergy = 0;
+      double matchedRatio = 0;
+
+      for (final ing in ingredients) {
+        final ingName = ing.name;
         // 查询本地营养表(内置+自定义)
         var nut = FoodNutritionDB.lookup(ingName);
         if (nut == null) {
@@ -200,8 +214,8 @@ class AiService {
           }
         }
         if (nut != null) {
-          totalEnergy += nut.energy * ratio;
-          matchedRatio += ratio;
+          totalEnergy += nut.energy * ing.ratio;
+          matchedRatio += ing.ratio;
         }
       }
 

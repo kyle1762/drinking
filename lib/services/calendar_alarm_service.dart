@@ -62,6 +62,46 @@ class CalendarAlarmService {
     return minuteOfDay >= s || minuteOfDay < e;
   }
 
+  /// 计算下一次提醒的精确触发时间(与日历时间网格完全一致)
+  ///
+  /// 与 [generateReminderTimes] 同规则:从 0:00 起按 [intervalMinutes] 间隔对齐
+  /// (如 60 分钟 → 0:00,1:00,...),并跳过免打扰时段;
+  /// 返回第一个晚于 [now](默认当前时间)的对齐时间点;当天无剩余时顺延到下一天。
+  /// 供本体闹钟注册使用,确保闹钟触发时间与日历提醒同步。
+  static DateTime nextReminderTime({
+    required int intervalMinutes,
+    required bool noonDnd,
+    required bool nightDnd,
+    String noonDndStart = '12:30',
+    String noonDndEnd = '14:30',
+    String nightDndStart = '22:00',
+    String nightDndEnd = '08:00',
+    DateTime? now,
+  }) {
+    if (intervalMinutes <= 0) return now?.add(const Duration(minutes: 60)) ?? DateTime.now().add(const Duration(minutes: 60));
+    final ref = now ?? DateTime.now();
+    // 最多顺延 2 天,避免免打扰时段(最长跨夜到次日 8:00)导致死循环
+    for (var dayOffset = 0; dayOffset < 2; dayOffset++) {
+      final dayStart =
+          DateTime(ref.year, ref.month, ref.day).add(Duration(days: dayOffset));
+      final dayEnd = dayStart.add(const Duration(days: 1));
+      var current = dayStart;
+      while (current.isBefore(dayEnd)) {
+        if (current.isAfter(ref)) {
+          final hm = current.hour * 60 + current.minute;
+          final inNoon = noonDnd && _inWindow(hm, noonDndStart, noonDndEnd);
+          final inNight = nightDnd && _inWindow(hm, nightDndStart, nightDndEnd);
+          if (!inNoon && !inNight) {
+            return current;
+          }
+        }
+        current = current.add(Duration(minutes: intervalMinutes));
+      }
+    }
+    // 兜底:直接顺延一个间隔
+    return ref.add(Duration(minutes: intervalMinutes));
+  }
+
   static int _parseHm(String t) {
     final parts = t.split(':');
     final h = int.tryParse(parts.isEmpty ? '' : parts[0]) ?? 0;
