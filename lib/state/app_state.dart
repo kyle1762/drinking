@@ -64,12 +64,14 @@ class AppState extends ChangeNotifier {
   int _loopInterval = 60; // 分钟
   final List<SingleReminder> _singleReminders = [];
   bool _reminderPaused = false;
+  bool _soundReminder = false; // 【临时测试】铃声提醒(后续删除)
 
   bool get reminderEnabled => _reminderEnabled;
   int get loopInterval => _loopInterval;
   List<SingleReminder> get singleReminders =>
       List.unmodifiable(_singleReminders);
   bool get reminderPaused => _reminderPaused;
+  bool get soundReminder => _soundReminder;
 
   /// 今日已提醒次数(从 SharedPreferences 同步,后台 isolate 也能写入)
   int _todayReminderCount = 0;
@@ -557,6 +559,7 @@ class AppState extends ChangeNotifier {
     _notificationGranted = d.notificationGranted;
     _reminderEnabled = d.reminderEnabled;
     _loopInterval = d.loopInterval;
+    _soundReminder = d.soundReminder;
     _singleReminders
       ..clear()
       ..addAll(d.singleReminders.where((r) => !r.isExpired));
@@ -917,6 +920,13 @@ class AppState extends ChangeNotifier {
   void setLoopInterval(int minutes) {
     _loopInterval = minutes;
     StorageService.saveLoopInterval(minutes);
+    notifyListeners();
+  }
+
+  /// 【临时测试】铃声提醒开关(后续删除)
+  void setSoundReminder(bool v) {
+    _soundReminder = v;
+    StorageService.saveSoundReminder(v);
     notifyListeners();
   }
 

@@ -70,12 +70,16 @@ class StorageService {
   static const kNextAlarmTime = 'nextAlarmTime';
   // 提醒暂停开关(临时暂停全局提醒)
   static const kReminderPaused = 'reminderPaused';
+  // 【临时测试】铃声提醒开关(后续删除):提醒触发时额外播放系统提示音
+  static const kSoundReminder = 'soundReminder';
   // 今日已触发提醒次数计数(跨天重置)
   static const kTodayReminderCount = 'todayReminderCount';
   static const kTodayReminderDate = 'todayReminderDate';
   static const kLastReminderTime = 'lastReminderTime';
   // 是否已询问过通知权限(首启引导)
   static const kHasPromptedNotification = 'hasPromptedNotification';
+  // 是否已提醒过配置 AI API Key(首启引导,仅弹一次)
+  static const kHasPromptedApiKey = 'hasPromptedApiKey';
   // 红色摄入过多时的弹窗文案(用户可选预设或自定义)
   static const kForbiddenWarningText = 'forbiddenWarningText';
   // 今日是否已弹过红色摄入过多提醒(每天最多一次)
@@ -183,6 +187,7 @@ class StorageService {
       lastFoodClearDate: p.getString(kLastFoodClearDate) ?? '',
       dailyDietSummaries: loadDailyDietSummaries(),
       dietAdvice: loadDietAdvice(),
+      soundReminder: p.getBool(kSoundReminder) ?? false,
     );
   }
 
@@ -279,6 +284,8 @@ class StorageService {
   static Future<void> saveReminderEnabled(bool v) =>
       _p.setBool(kReminderEnabled, v);
   static Future<void> saveLoopInterval(int v) => _p.setInt(kLoopInterval, v);
+  static Future<void> saveSoundReminder(bool v) =>
+      _p.setBool(kSoundReminder, v);
   static Future<void> saveSingleReminders(List<SingleReminder> list) =>
       _p.setString(
           kSingleReminders, jsonEncode(list.map((e) => e.toJson()).toList()));
@@ -505,6 +512,7 @@ class StorageService {
       kExerciseCalories,
       kForbiddenWarningText,
       kForbiddenWarnedDate,
+      kSoundReminder,
     ];
     for (final k in keys) {
       await _p.remove(k);
@@ -545,6 +553,7 @@ class StoredData {
   final String lastFoodClearDate;
   final List<DailyDietSummary> dailyDietSummaries;
   final DietAdvice? dietAdvice;
+  final bool soundReminder;
 
   const StoredData({
     required this.accountStateIndex,
@@ -578,5 +587,6 @@ class StoredData {
     required this.lastFoodClearDate,
     required this.dailyDietSummaries,
     required this.dietAdvice,
+    required this.soundReminder,
   });
 }

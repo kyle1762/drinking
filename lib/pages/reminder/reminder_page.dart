@@ -249,6 +249,37 @@ class _LoopReminder extends StatelessWidget {
             const SizedBox(height: 12),
             const Divider(height: 1),
             const SizedBox(height: 12),
+            // 【临时测试】铃声提醒方式(后续删除)
+            Row(
+              children: [
+                const Icon(Icons.volume_up_outlined,
+                    size: 20, color: AppColors.softBlueDeep),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('铃声提醒(临时测试)',
+                          style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600)),
+                      Text('提醒触发时额外播放系统提示音,后续删除',
+                          style: TextStyle(
+                              color: AppColors.textSecondary, fontSize: 11)),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: s.soundReminder,
+                  activeThumbColor: AppColors.softBlueDeep,
+                  onChanged: s.setSoundReminder,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
             // 日历同步:自动同步(删旧建新) + 删除全部日历
             const _CalendarSyncButtons(),
           ],
@@ -514,7 +545,7 @@ class _DndModuleState extends State<_DndModule> {
       s.setNightDndTime(start, end);
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+      SnackBar(duration: const Duration(seconds: 1), 
           content: Text(isNoon
               ? '午休免打扰已设为 $start ~ $end'
               : '夜间免打扰已设为 $start ~ $end')),
@@ -578,7 +609,7 @@ class _CalendarSyncButtonsState extends State<_CalendarSyncButtons> {
     );
     if (allTimes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('提醒时间为空,请检查作息设置')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('提醒时间为空,请检查作息设置')),
       );
       return;
     }
@@ -603,7 +634,7 @@ class _CalendarSyncButtonsState extends State<_CalendarSyncButtons> {
             content: Text(refs.isEmpty
                 ? '日历事件添加失败,请检查日历权限'
                 : '已同步 ${refs.length} 个日历提醒事件(每日重复)'),
-            duration: const Duration(seconds: 2),
+            duration: const Duration(seconds: 1),
           ),
         );
       }
@@ -611,7 +642,7 @@ class _CalendarSyncButtonsState extends State<_CalendarSyncButtons> {
       if (mounted) {
         setState(() => _loading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('日历同步异常: $e')),
+          SnackBar(duration: const Duration(seconds: 1), content: Text('日历同步异常: $e')),
         );
       }
     }
@@ -621,7 +652,7 @@ class _CalendarSyncButtonsState extends State<_CalendarSyncButtons> {
   void _clearAll() {
     if (_calendarRefs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有已添加的日历事件')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('没有已添加的日历事件')),
       );
       return;
     }
@@ -651,7 +682,7 @@ class _CalendarSyncButtonsState extends State<_CalendarSyncButtons> {
         _loading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已删除 $deletedCalendar 个日历事件')),
+        SnackBar(duration: const Duration(seconds: 1), content: Text('已删除 $deletedCalendar 个日历事件')),
       );
     }
   }
@@ -866,7 +897,7 @@ class _TodayRecordExpandableState extends State<_TodayRecordExpandable> {
               onConfirm: () {
                 s.removeRecord(r.id);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('记录已删除')),
+                  const SnackBar(duration: Duration(seconds: 1), content: Text('记录已删除')),
                 );
               },
               confirmText: '删除',

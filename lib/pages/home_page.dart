@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../theme/app_colors.dart';
 import '../services/notification_service.dart';
 import '../services/alarm_service.dart';
+import '../services/ai_service.dart';
 import '../services/storage_service.dart';
 import '../state/app_state.dart';
 import 'reminder/reminder_page.dart';
@@ -48,6 +49,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         .addPostFrameCallback((_) => _checkFirstLaunchNotification());
     // 首次启动时询问是否开启午休免打扰
     WidgetsBinding.instance.addPostFrameCallback((_) => _promptNoonDnd());
+    // 首次启动时要求配置 AI API Key(仅未配置时弹一次)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _promptApiKey());
     // 请求忽略电池优化(防止国产ROM杀死后台闹钟)
     WidgetsBinding.instance
         .addPostFrameCallback((_) => _requestIgnoreBatteryOptimization());
@@ -125,7 +128,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       s.setNotificationGranted(granted);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
+        SnackBar(duration: const Duration(seconds: 1), 
             content: Text(granted ? '通知权限已开启,温柔提醒已就绪' : '通知权限被拒绝,可在系统设置中开启')),
       );
       if (granted && s.reminderEnabled && !s.reminderPaused) {
@@ -164,8 +167,74 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       s.setNoonDnd(true);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已开启午休免打扰(12:30~14:30)')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('已开启午休免打扰(12:30~14:30)')),
       );
+    }
+  }
+
+  /// 首次启动:若未配置 AI API Key,弹窗要求用户直接填写
+  Future<void> _promptApiKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasPrompted =
+        prefs.getBool(StorageService.kHasPromptedApiKey) ?? false;
+    await prefs.setBool(StorageService.kHasPromptedApiKey, true);
+    if (!mounted || hasPrompted) return;
+    if (AiService.hasApiKey) return;
+
+    final ctrl = TextEditingController();
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('配置 AI API Key',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                '首次使用需要先配置 AI API Key,才能使用拍照识别、食材营养查询、饮食建议等功能。',
+                style: TextStyle(fontSize: 14, height: 1.5)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              autofocus: true,
+              obscureText: true,
+              decoration: InputDecoration(
+                hintText: '输入 API Key(open.bigmodel.cn 免费申请)',
+                isDense: true,
+                filled: true,
+                fillColor: AppColors.cream,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text('也可在「ai&飞书」页随时修改',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('暂不')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('保存')),
+        ],
+      ),
+    );
+    if (saved == true) {
+      await AiService.saveApiKey(ctrl.text.trim());
+      if (mounted) {
+        context.read<AppState>().refreshAiData();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(duration: Duration(seconds: 1), content: Text('API Key 已保存')),
+        );
+      }
     }
   }
 
@@ -187,7 +256,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         ..hideCurrentSnackBar()
         ..showSnackBar(const SnackBar(
           content: Text('再按一次返回键退出'),
-          duration: Duration(seconds: 2),
+          duration: Duration(seconds: 1),
         ));
       return false;
     }

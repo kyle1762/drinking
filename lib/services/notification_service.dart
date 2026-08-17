@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -145,6 +146,15 @@ class NotificationService {
       debugPrint('[AlarmFired] showReminder 异常: $e');
     }
 
+    // 1.5 【临时测试】铃声提醒(后续删除):开启后额外播放系统提示音
+    if (prefs.getBool(StorageService.kSoundReminder) ?? false) {
+      try {
+        SystemSound.play(SystemSoundType.alert);
+      } catch (e) {
+        debugPrint('[AlarmFired] 播放系统提示音异常: $e');
+      }
+    }
+
     // 2. 启动飞书推送(关键任务)
     debugPrint('[AlarmFired] 启动飞书推送');
     final pushFuture = FeishuService.pushReminderFromBackground();
@@ -182,6 +192,14 @@ class NotificationService {
     );
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
+    // 【临时测试】铃声提醒(后续删除)
+    if (prefs.getBool(StorageService.kSoundReminder) ?? false) {
+      try {
+        SystemSound.play(SystemSoundType.alert);
+      } catch (e) {
+        debugPrint('[TestAlarm] 播放系统提示音异常: $e');
+      }
+    }
     await FeishuService.pushReminderFromBackground();
     await _recordReminderFired(prefs);
     debugPrint('[TestAlarm] 测试提醒流程完成');

@@ -172,7 +172,7 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage>
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('未检测到飞书 App,请先安装飞书后再登录'),
-              duration: Duration(seconds: 3),
+              duration: Duration(seconds: 1),
             ),
           );
         }
@@ -183,7 +183,7 @@ class _FeishuOAuthPageState extends State<FeishuOAuthPage>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('无法打开飞书 App,请确认已安装飞书'),
-            duration: Duration(seconds: 3),
+            duration: Duration(seconds: 1),
           ),
         );
       }

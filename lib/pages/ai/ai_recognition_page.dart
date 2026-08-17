@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -52,7 +52,7 @@ class _AiRecognitionPageState extends State<AiRecognitionPage> {
         // 这里滚动到个人信息卡片并提示用户点击"编辑"
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('请点击上方「个人信息」卡片的「编辑」按钮更新数据')),
+          const SnackBar(duration: Duration(seconds: 1), content: Text('请点击上方「个人信息」卡片的「编辑」按钮更新数据')),
         );
       },
     );

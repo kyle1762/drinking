@@ -1,4 +1,4 @@
-﻿part of 'ai_recognition_page.dart';
+part of 'ai_recognition_page.dart';
 
 class _Header extends StatelessWidget {
   const _Header();
@@ -219,8 +219,6 @@ class _ProfileCardState extends State<_ProfileCard> {
   late TextEditingController _muscleCtrl;
   Gender _gender = Gender.unspecified;
   UserGoal _goal = UserGoal.maintain;
-  // 个人形象图片(编辑期临时持有;保存时写入 UserProfile.imagePath)
-  String? _imagePath;
   final ImagePicker _picker = ImagePicker();
   bool _scanning = false; // 体测图片识别中
 
@@ -230,7 +228,6 @@ class _ProfileCardState extends State<_ProfileCard> {
     final p = context.read<AppState>().profile;
     _gender = p.gender;
     _goal = p.goal;
-    _imagePath = p.imagePath;
     _ageCtrl = TextEditingController(text: p.age > 0 ? p.age.toString() : '');
     _heightCtrl =
         TextEditingController(text: p.height > 0 ? p.height.toString() : '');
@@ -240,33 +237,11 @@ class _ProfileCardState extends State<_ProfileCard> {
         text: p.muscle > 0 ? p.muscle.toStringAsFixed(1) : '');
   }
 
-  /// 选择个人形象图片(相册)
-  Future<void> _pickImage() async {
-    try {
-      final xfile = await _picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1024,
-        maxHeight: 1024,
-        imageQuality: 85,
-      );
-      if (xfile == null) return;
-      setState(() => _imagePath = xfile.path);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('图片选择失败: $e')),
-      );
-    }
-  }
-
-  /// 移除已选个人形象图片
-  void _removeImage() => setState(() => _imagePath = null);
-
   /// 选择体测图片并调用 AI 识别身高/体重/肌肉量
   Future<void> _scanBodyMetrics() async {
     if (!AiService.hasApiKey) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先在账户页配置 AI API Key')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请先在账户页配置 AI API Key')),
       );
       return;
     }
@@ -284,7 +259,7 @@ class _ProfileCardState extends State<_ProfileCard> {
       if (result == null) {
         setState(() => _scanning = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('识别失败,请重试或检查图片清晰度')),
+          const SnackBar(duration: Duration(seconds: 1), content: Text('识别失败,请重试或检查图片清晰度')),
         );
         return;
       }
@@ -307,13 +282,13 @@ class _ProfileCardState extends State<_ProfileCard> {
       if (result.weight != null) parts.add('体重${result.weight!.toStringAsFixed(1)}kg');
       if (result.muscle != null) parts.add('肌肉量${result.muscle!.toStringAsFixed(1)}kg');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(parts.isEmpty ? '未识别到身体数据' : '已识别: ${parts.join(", ")}')),
+        SnackBar(duration: const Duration(seconds: 1), content: Text(parts.isEmpty ? '未识别到身体数据' : '已识别: ${parts.join(", ")}')),
       );
     } catch (e) {
       if (!mounted) return;
       setState(() => _scanning = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('识别异常: $e')),
+        SnackBar(duration: const Duration(seconds: 1), content: Text('识别异常: $e')),
       );
     }
   }
@@ -421,55 +396,6 @@ class _ProfileCardState extends State<_ProfileCard> {
             ),
             if (_editing) ...[
               const SizedBox(height: 12),
-              // 个人形象图片
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  const Text('个人形象',
-                      style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600)),
-                  const SizedBox(width: 12),
-                  RippleButton(
-                    onTap: _pickImage,
-                    borderRadius: 12,
-                    child: Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: AppColors.cream,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                            color: AppColors.divider, width: 0.5),
-                      ),
-                      clipBehavior: Clip.hardEdge,
-                      child: _imagePath != null
-                          ? Image.file(File(_imagePath!),
-                              fit: BoxFit.cover)
-                          : const Icon(Icons.add_a_photo,
-                              size: 22, color: AppColors.textSecondary),
-                    ),
-                  ),
-                  if (_imagePath != null) ...[
-                    const SizedBox(width: 8),
-                    RippleButton(
-                      onTap: _removeImage,
-                      borderRadius: 8,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        child: Text('移除',
-                            style: TextStyle(
-                                color: AppColors.softBlueDeep,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 12),
               // 性别选择
               const Text('性别',
                   style: TextStyle(
@@ -539,30 +465,10 @@ class _ProfileCardState extends State<_ProfileCard> {
               ),
             ] else ...[
               const SizedBox(height: 10),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Wrap(
+                spacing: 16,
+                runSpacing: 8,
                 children: [
-                  if (p.imagePath != null) ...[
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: AppColors.cream,
-                        borderRadius: BorderRadius.circular(12),
-                        border:
-                            Border.all(color: AppColors.divider, width: 0.5),
-                      ),
-                      clipBehavior: Clip.hardEdge,
-                      child: Image.file(File(p.imagePath!),
-                          fit: BoxFit.cover),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  Expanded(
-                    child: Wrap(
-                      spacing: 16,
-                      runSpacing: 8,
-                      children: [
                         if (complete) ...[
                           _infoChip('性别', p.gender == Gender.male ? '男' : '女'),
                           _infoChip('年龄', '${p.age}岁'),
@@ -580,9 +486,6 @@ class _ProfileCardState extends State<_ProfileCard> {
                         ],
                       ],
                     ),
-                  ),
-                ],
-              ),
             ],
           ],
         ),
@@ -708,7 +611,7 @@ class _ProfileCardState extends State<_ProfileCard> {
       weight: weight,
       muscle: muscle,
       goal: _goal,
-      imagePath: _imagePath,
+      imagePath: null,
     );
     // 目标变更后自动切换饮食方案(增肌 -> 增肌方案;减脂/保持 -> 减肥方法),默认选第一个
     if (goalChanged) {
@@ -736,7 +639,7 @@ class _ProfileCardState extends State<_ProfileCard> {
     }
     setState(() => _editing = false);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('个人信息已保存')),
+      const SnackBar(duration: Duration(seconds: 1), content: Text('个人信息已保存')),
     );
   }
 }
@@ -1739,7 +1642,7 @@ class _DietAdviceCardState extends State<_DietAdviceCard> {
     final s = context.read<AppState>();
     if (!s.profile.profileComplete) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先完善个人信息(性别/年龄/身高/体重)')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请先完善个人信息(性别/年龄/身高/体重)')),
       );
       return;
     }
@@ -1748,12 +1651,12 @@ class _DietAdviceCardState extends State<_DietAdviceCard> {
       final (success, message) = await s.triggerDietAnalysis();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
+        SnackBar(duration: const Duration(seconds: 1), content: Text(message)),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('分析失败: $e')),
+        SnackBar(duration: const Duration(seconds: 1), content: Text('分析失败: $e')),
       );
     } finally {
       if (mounted) setState(() => _analyzing = false);
@@ -1859,39 +1762,234 @@ class _ActionCards extends StatelessWidget {
     if (file == null) return;
     if (!context.mounted) return;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const _LoadingDialog(),
-    );
+    // 识别循环:识别 → 确认名称 → (确认后进入下一步 / 重新识别)
+    while (true) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const _LoadingDialog(),
+      );
 
-    final result = await AiService.recognize(
-      type: type,
-      imagePath: file.path,
-    );
+      final result = await AiService.recognize(
+        type: type,
+        imagePath: file.path,
+      );
 
-    if (context.mounted) {
-      Navigator.pop(context);
-    }
-
-    if (result == null) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('识别失败,请重试')),
-        );
+        Navigator.pop(context);
       }
+
+      if (result == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(duration: Duration(seconds: 1), content: Text('识别失败,请重试')),
+          );
+        }
+        return;
+      }
+
+      if (!context.mounted) return;
+
+      // 先确认识别出的食物/运动名称,再进入下一步操作
+      final confirm = await showModalBottomSheet<_RecognitionConfirmResult>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => _RecognitionConfirmSheet(
+          result: result,
+          isFood: isFood,
+        ),
+      );
+      if (confirm == null) return; // 用户关闭,取消
+      if (confirm == _RecognitionConfirmResult.retry) continue; // 重新识别
+
+      if (!context.mounted) return;
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => isFood
+            ? _FoodRecordSheet(result: result)
+            : _ExerciseRecordSheet(result: result),
+      );
       return;
     }
+  }
+}
 
-    if (!context.mounted) return;
+/// 识别结果确认结果
+enum _RecognitionConfirmResult { retry, proceed }
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => isFood
-          ? _FoodRecordSheet(result: result)
-          : _ExerciseRecordSheet(result: result),
+/// 识别结果名称确认 sheet
+/// 拍照/相册识别后,先展示识别出的食物/运动名称与置信度,
+/// 用户确认后再进入下一步(记录界面);可选「重新识别」
+class _RecognitionConfirmSheet extends StatelessWidget {
+  const _RecognitionConfirmSheet({
+    required this.result,
+    required this.isFood,
+  });
+
+  final AiRecognitionResult result;
+  final bool isFood;
+
+  @override
+  Widget build(BuildContext context) {
+    final deepColor = isFood ? AppColors.softBlueDeep : AppColors.mintDeep;
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.cream,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    isFood
+                        ? Icons.restaurant_outlined
+                        : Icons.directions_run_outlined,
+                    size: 20,
+                    color: deepColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(isFood ? '识别到食物' : '识别到运动',
+                      style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  Text('置信度 ${(result.confidence * 100).round()}%',
+                      style: const TextStyle(
+                          color: AppColors.textSecondary, fontSize: 12)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // 图片预览 + 名称
+              Row(
+                children: [
+                  if (result.imagePath != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(result.imagePath!),
+                        width: 72,
+                        height: 72,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      result.name,
+                      style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                ],
+              ),
+              if (isFood && result.ingredients.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: result.ingredients
+                        .map((e) => Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: deepColor.withAlpha(20),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(e.name,
+                                  style: TextStyle(
+                                      color: deepColor,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600)),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  // 重新识别
+                  Expanded(
+                    child: RippleButton(
+                      onTap: () => Navigator.pop(
+                          context, _RecognitionConfirmResult.retry),
+                      borderRadius: AppThemeRadius.s,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.paused,
+                          borderRadius:
+                              BorderRadius.circular(AppThemeRadius.s),
+                          border: Border.all(
+                              color: AppColors.textSecondary.withAlpha(50)),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.refresh,
+                                size: 16, color: AppColors.textSecondary),
+                            SizedBox(width: 6),
+                            Text('重新识别',
+                                style: TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 确认,进入下一步
+                  Expanded(
+                    child: RippleButton(
+                      onTap: () => Navigator.pop(
+                          context, _RecognitionConfirmResult.proceed),
+                      borderRadius: AppThemeRadius.s,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(
+                          color: deepColor,
+                          borderRadius:
+                              BorderRadius.circular(AppThemeRadius.s),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Text('确认,去记录',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

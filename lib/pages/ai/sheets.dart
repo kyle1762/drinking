@@ -500,7 +500,7 @@ class _FoodRecordSheetState extends State<_FoodRecordSheet> {
 
     final exists = _ingredients.any((e) => e.name == name);
     if (exists) {
-      messenger.showSnackBar(SnackBar(content: Text('食材「$name」已在列表中')));
+      messenger.showSnackBar(SnackBar(duration: const Duration(seconds: 1), content: Text('食材「$name」已在列表中')));
       return;
     }
 
@@ -534,7 +534,7 @@ class _FoodRecordSheetState extends State<_FoodRecordSheet> {
       _lookingUp = false;
     });
 
-    messenger.showSnackBar(SnackBar(content: Text('已添加「$name」,占比与营养已重新计算')));
+    messenger.showSnackBar(SnackBar(duration: const Duration(seconds: 1), content: Text('已添加「$name」,占比与营养已重新计算')));
   }
 
   /// 解析用户输入:
@@ -546,7 +546,7 @@ class _FoodRecordSheetState extends State<_FoodRecordSheet> {
     final messenger = ScaffoldMessenger.of(context);
     if (text.isEmpty) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('请输入菜品或食材名称')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请输入菜品或食材名称')),
       );
       return;
     }
@@ -634,7 +634,7 @@ class _FoodRecordSheetState extends State<_FoodRecordSheet> {
     } else {
       msg = '已识别 $matched/$total 个食材,未匹配按默认值估算';
     }
-    messenger.showSnackBar(SnackBar(content: Text(msg)));
+    messenger.showSnackBar(SnackBar(duration: const Duration(seconds: 1), content: Text(msg)));
   }
 
   void _setAmount(double v, {bool fromInput = false}) {
@@ -650,7 +650,7 @@ class _FoodRecordSheetState extends State<_FoodRecordSheet> {
     // 非营养成分表食品必须已有食材;营养成分表食品无需食材
     if (!_confirmed || (_ingredients.isEmpty && !_fromLabel)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先输入食材并点击「查询营养」')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请先输入食材并点击「查询营养」')),
       );
       return;
     }
@@ -696,7 +696,7 @@ class _FoodRecordSheetState extends State<_FoodRecordSheet> {
     if (!context.mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
+      SnackBar(duration: const Duration(seconds: 1), 
           content: Text(saveRecipe
               ? '已记录 $name ${amount}g $_totalCalories kcal,配方已保存'
               : '已记录 $name ${amount}g $_totalCalories kcal')),
@@ -1090,7 +1090,7 @@ class _FoodRecordSheetState extends State<_FoodRecordSheet> {
                             });
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(
+                              SnackBar(duration: const Duration(seconds: 1), content: Text(
                                   '已更新「${edited.name}」每100g营养数据,并保存到本地数据库')),
                             );
                           }
@@ -1290,7 +1290,7 @@ class _FoodRecordSheetState extends State<_FoodRecordSheet> {
   }
 }
 
-/// 可编辑食材占比行(名称 + 匹配状态 + 占比输入 + 删除)
+/// 可编辑食材占比行(食材名 + 信息标签 + 占比输入 + 删除)
 /// 用于手动输入饮食时,展示 AI 识别出的食材并允许用户调整占比
 class _EditableIngredientRow extends StatefulWidget {
   const _EditableIngredientRow({
@@ -1356,122 +1356,103 @@ class _EditableIngredientRowState extends State<_EditableIngredientRow> {
       DietFoodStatus.neutral => (AppColors.textPrimary, null, AppColors.textPrimary),
     };
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // 左侧:食材名称 + 信息标签(标签换行展示,名称可占满剩余宽度)
           Expanded(
-            flex: 5,
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Flexible(
-                  child: Text(
-                    widget.name,
-                    style: TextStyle(
-                        color: nameColor,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                Text(
+                  widget.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: nameColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600),
                 ),
-                const SizedBox(width: 4),
-                if (mark != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 4, vertical: 1),
-                    decoration: BoxDecoration(
-                      color: markColor.withAlpha(16),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      mark,
-                      style: TextStyle(
-                          color: markColor,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                const SizedBox(width: 4),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: widget.matched ? AppColors.mint : AppColors.banner,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    widget.matched ? '已匹配' : 'AI补全',
-                    style: TextStyle(
-                      color: widget.matched
-                          ? AppColors.mintDeep
-                          : AppColors.textSecondary,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (mark != null)
+                      _tag(mark,
+                          color: markColor.withAlpha(16),
+                          textColor: markColor),
+                    _tag(widget.matched ? '已匹配' : 'AI补全',
+                        color: widget.matched
+                            ? AppColors.mint
+                            : AppColors.banner,
+                        textColor: widget.matched
+                            ? AppColors.mintDeep
+                            : AppColors.textSecondary),
+                  ],
                 ),
               ],
             ),
           ),
-          Expanded(
-            flex: 4,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Slider(
-                    min: 0,
-                    max: 100,
-                    divisions: 20,
-                    value: (widget.ratio * 100).clamp(0.0, 100.0),
-                    activeColor: AppColors.softBlueDeep,
-                    onChanged: (v) {
-                      _ctrl.text = '${v.round()}';
-                      widget.onRatioChanged(v / 100);
-                    },
-                  ),
+          const SizedBox(width: 10),
+          // 占比输入
+          SizedBox(
+            width: 60,
+            child: TextField(
+              controller: _ctrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              textAlign: TextAlign.center,
+              style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                isDense: true,
+                filled: true,
+                fillColor: AppColors.cream,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppThemeRadius.s),
+                  borderSide: BorderSide.none,
                 ),
-                SizedBox(
-                  width: 48,
-                  child: TextField(
-                    controller: _ctrl,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w600),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      filled: true,
-                      fillColor: AppColors.cream,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppThemeRadius.s),
-                        borderSide: BorderSide.none,
-                      ),
-                      suffixText: '%',
-                      suffixStyle: const TextStyle(
-                          fontSize: 9, color: AppColors.textSecondary),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 4, vertical: 6),
-                    ),
-                    onChanged: (text) {
-                      final v = double.tryParse(text);
-                      if (v != null) {
-                        widget.onRatioChanged((v / 100).clamp(0.0, 1.0));
-                      }
-                    },
-                  ),
-                ),
-              ],
+                suffixText: '%',
+                suffixStyle: const TextStyle(
+                    fontSize: 9, color: AppColors.textSecondary),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 4, vertical: 6),
+              ),
+              onChanged: (text) {
+                final v = double.tryParse(text);
+                if (v != null) {
+                  widget.onRatioChanged((v / 100).clamp(0.0, 1.0));
+                }
+              },
             ),
           ),
+          // 删除按钮(固定靠右,贴近白底边缘)
           IconButton(
             icon: const Icon(Icons.close, size: 14),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+            constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
             color: AppColors.textSecondary,
             onPressed: widget.onDeleted,
           ),
         ],
+      ),
+    );
+  }
+
+  /// 信息小标签(推荐/避免/匹配状态)
+  Widget _tag(String text, {required Color color, required Color textColor}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+            color: textColor, fontSize: 9, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -1572,7 +1553,7 @@ class _ExerciseRecordSheetState extends State<_ExerciseRecordSheet> {
     final messenger = ScaffoldMessenger.of(context);
     if (name.isEmpty) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('请先输入运动名称')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请先输入运动名称')),
       );
       return;
     }
@@ -1584,20 +1565,20 @@ class _ExerciseRecordSheetState extends State<_ExerciseRecordSheet> {
         _estimated = true;
       });
       messenger.showSnackBar(
-        SnackBar(content: Text('已使用保存的「$name」热量: ${saved.toStringAsFixed(2)} kcal/次')),
+        SnackBar(duration: const Duration(seconds: 1), content: Text('已使用保存的「$name」热量: ${saved.toStringAsFixed(2)} kcal/次')),
       );
       return;
     }
     if (!AiService.hasApiKey) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('请先在账户页配置 API Key')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请先在账户页配置 API Key')),
       );
       return;
     }
     final profile = context.read<AppState>().profile;
     if (!profile.profileComplete) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('请先在上方填全性别/年龄/身高/体重,以便 AI 精准估算')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请先在上方填全性别/年龄/身高/体重,以便 AI 精准估算')),
       );
       return;
     }
@@ -1613,7 +1594,7 @@ class _ExerciseRecordSheetState extends State<_ExerciseRecordSheet> {
       if (result == null || result.totalKcal <= 0) {
         if (mounted) {
           messenger.showSnackBar(
-            const SnackBar(content: Text('AI 估算失败,请手动填写或稍后重试')),
+            const SnackBar(duration: Duration(seconds: 1), content: Text('AI 估算失败,请手动填写或稍后重试')),
           );
         }
       } else {
@@ -1626,7 +1607,7 @@ class _ExerciseRecordSheetState extends State<_ExerciseRecordSheet> {
         });
         if (mounted) {
           messenger.showSnackBar(
-            SnackBar(content: Text(
+            SnackBar(duration: const Duration(seconds: 1), content: Text(
                 'AI 估算:${result.name} ${result.count}${result.unit} ≈ ${result.totalKcal.toStringAsFixed(0)} kcal(可微调数量)')),
           );
         }
@@ -1634,7 +1615,7 @@ class _ExerciseRecordSheetState extends State<_ExerciseRecordSheet> {
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(
-          SnackBar(content: Text('估算出错:$e')),
+          SnackBar(duration: const Duration(seconds: 1), content: Text('估算出错:$e')),
         );
       }
     } finally {
@@ -1966,7 +1947,7 @@ class _ExerciseRecordSheetState extends State<_ExerciseRecordSheet> {
     final name = _nameCtrl.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入运动名称')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请输入运动名称')),
       );
       return;
     }
@@ -2007,7 +1988,7 @@ class _ExerciseRecordSheetState extends State<_ExerciseRecordSheet> {
     if (!context.mounted) return;
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_isEditing
+      SnackBar(duration: const Duration(seconds: 1), content: Text(_isEditing
           ? '已更新 $name ${_reps.round()} 次 $_totalCalories kcal'
           : (saveCalorie
               ? '已记录 $name ${_reps.round()} 次 $_totalCalories kcal,热量已保存'
@@ -2094,7 +2075,7 @@ class _EditNutritionSheetState extends State<_EditNutritionSheet> {
     final fiber = double.tryParse(_fiberCtrl.text.trim()) ?? 0;
     if (energy <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请填写有效的能量值(kcal/100g)')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请填写有效的能量值(kcal/100g)')),
       );
       return;
     }

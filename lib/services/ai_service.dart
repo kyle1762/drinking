@@ -27,6 +27,9 @@ class AiService {
   /// 文本模型(免费,用于食材营养查询和运动卡路里估算)
   static const _textModel = 'glm-4-flash';
 
+  /// 每次调用 AI 接口后上报 token 用量(由 UI 层注册,通过 SnackBar 告知用户)
+  static void Function(String message)? onUsageReported;
+
   // ========== API Key 管理 ==========
 
   /// 获取已保存的 API Key(直接读取单 key,避免反序列化全部配置)
@@ -146,6 +149,7 @@ class AiService {
 
     // 解析智谱响应
     final respData = jsonDecode(response.body) as Map<String, dynamic>;
+    _reportUsage(respData, '图片识别');
     final choices = respData['choices'] as List;
     if (choices.isEmpty) {
       throw Exception('AI 未返回识别结果');
@@ -362,6 +366,7 @@ class AiService {
         return null;
       }
       final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      _reportUsage(respData, '食材营养查询');
       final choices = respData['choices'] as List;
       if (choices.isEmpty) return null;
       final content = choices[0]['message']['content'] as String;
@@ -418,6 +423,7 @@ class AiService {
         return null;
       }
       final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      _reportUsage(respData, '菜品食材识别');
       final choices = respData['choices'] as List;
       if (choices.isEmpty) return null;
       final content = choices[0]['message']['content'] as String;
@@ -502,6 +508,7 @@ class AiService {
         return null;
       }
       final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      _reportUsage(respData, '运动估算');
       final choices = respData['choices'] as List;
       if (choices.isEmpty) return null;
       final content = choices[0]['message']['content'] as String;
@@ -523,6 +530,23 @@ class AiService {
     } catch (e) {
       debugPrint('[AiService] 运动卡路里估算失败: $e');
       return null;
+    }
+  }
+
+  /// 解析智谱响应中的 usage 字段并上报 token 用量
+  /// 每次 AI API 调用成功后都会回调 onUsageReported,告知用户本次消耗的 token 值
+  static void _reportUsage(Map<String, dynamic> respData, String tag) {
+    try {
+      final usage = respData['usage'] as Map<String, dynamic>?;
+      if (usage == null) return;
+      final prompt = (usage['prompt_tokens'] as num?)?.toInt() ?? 0;
+      final completion = (usage['completion_tokens'] as num?)?.toInt() ?? 0;
+      final total = (usage['total_tokens'] as num?)?.toInt() ?? 0;
+      onUsageReported?.call(
+        '[$tag] 本次 AI 调用消耗 tokens: 输入$prompt + 输出$completion = 合计$total',
+      );
+    } catch (_) {
+      // 解析失败忽略
     }
   }
 
@@ -621,6 +645,7 @@ class AiService {
         return null;
       }
       final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      _reportUsage(respData, '体测识别');
       final choices = respData['choices'] as List;
       if (choices.isEmpty) return null;
       final content = choices[0]['message']['content'] as String;
@@ -767,6 +792,7 @@ class AiService {
         return null;
       }
       final respData = jsonDecode(response.body) as Map<String, dynamic>;
+      _reportUsage(respData, '饮食分析');
       final choices = respData['choices'] as List;
       if (choices.isEmpty) return null;
       final content = choices[0]['message']['content'] as String;

@@ -602,13 +602,13 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
     final appSecret = _appSecretCtrl.text.trim();
     if (appId.isEmpty || appSecret.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('App ID 和 App Secret 不能为空')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('App ID 和 App Secret 不能为空')),
       );
       return;
     }
     s.saveFeishuCredentials(appId: appId, appSecret: appSecret);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('配置已保存,可点击下方「飞书登录」')),
+      const SnackBar(duration: Duration(seconds: 1), content: Text('配置已保存,可点击下方「飞书登录」')),
     );
   }
 
@@ -620,12 +620,12 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
       if (!ok) {
         messenger.showSnackBar(
-          SnackBar(content: Text('无法打开链接:$url')),
+          SnackBar(duration: const Duration(seconds: 1), content: Text('无法打开链接:$url')),
         );
       }
     } catch (e) {
       messenger.showSnackBar(
-        SnackBar(content: Text('打开链接失败:$e')),
+        SnackBar(duration: const Duration(seconds: 1), content: Text('打开链接失败:$e')),
       );
     }
   }
@@ -645,7 +645,7 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
     final appSecret = _appSecretCtrl.text.trim();
     if (appId.isEmpty || appSecret.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先填写 App ID 和 App Secret')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('请先填写 App ID 和 App Secret')),
       );
       return;
     }
@@ -656,7 +656,7 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
     if (!mounted) return;
     setState(() => _testing = false);
     messenger.showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
     );
   }
 
@@ -675,7 +675,7 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
 
     if (code == null || code.isEmpty) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('已取消登录')),
+        const SnackBar(duration: Duration(seconds: 1), content: Text('已取消登录')),
       );
       return;
     }
@@ -700,7 +700,7 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
     Navigator.of(context).pop();
 
     messenger.showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 3)),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
     );
   }
 
@@ -738,7 +738,7 @@ class _FeishuConfigCardState extends State<_FeishuConfigCard> {
     Navigator.of(context).pop();
 
     messenger.showSnackBar(
-      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 1)),
     );
   }
 }
@@ -827,7 +827,7 @@ class _FeishuBindCard extends StatelessWidget {
                   onConfirm: () {
                     s.unbindFeishu();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已退出飞书登录,全局推送已关闭')),
+                      const SnackBar(duration: Duration(seconds: 1), content: Text('已退出飞书登录,全局推送已关闭')),
                     );
                   },
                 ),
@@ -856,14 +856,14 @@ class _FeishuBindCard extends StatelessWidget {
   Future<void> _testPush(BuildContext context, AppState s) async {
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-      const SnackBar(content: Text('正在发送测试消息...')),
+      const SnackBar(duration: Duration(seconds: 1), content: Text('正在发送测试消息...')),
     );
     final result = await s.sendFeishuMessageWithDetail('动一动提醒测试:飞书推送已连通~');
     if (!context.mounted) return;
     messenger.showSnackBar(
       SnackBar(
         content: Text(result.$1 ? '测试消息已发送至飞书' : '发送失败: ${result.$2}'),
-        duration: const Duration(seconds: 5),
+        duration: const Duration(seconds: 1),
       ),
     );
   }
@@ -1015,7 +1015,7 @@ class _ApiKeyCardState extends State<_ApiKeyCard> {
       context.read<AppState>().refreshAiData();
       setState(() => _editing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(key.isEmpty ? '已清除 API Key' : 'API Key 已保存')),
+        SnackBar(duration: const Duration(seconds: 1), content: Text(key.isEmpty ? '已清除 API Key' : 'API Key 已保存')),
       );
     }
   }
@@ -1059,7 +1059,7 @@ class _ProfileModule extends StatelessWidget {
                     s.updateProfile(s.profile.copyWith(targetWeight: tw));
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('目标体重已更新为 $tw kg')),
+                        SnackBar(duration: const Duration(seconds: 1), content: Text('目标体重已更新为 $tw kg')),
                       );
                     }
                   }
@@ -1077,7 +1077,7 @@ class _ProfileModule extends StatelessWidget {
                     s.setDailyGoal(goal);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('每日目标已更新为 $goal ml,全局同步')),
+                        SnackBar(duration: const Duration(seconds: 1), content: Text('每日目标已更新为 $goal ml,全局同步')),
                       );
                     }
                   }
@@ -1327,14 +1327,14 @@ class _WarningTextCard extends StatelessWidget {
                         final text = ctrl.text.trim();
                         if (text.isEmpty) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
-                            const SnackBar(content: Text('文案不能为空')),
+                            const SnackBar(duration: Duration(seconds: 1), content: Text('文案不能为空')),
                           );
                           return;
                         }
                         StorageService.saveForbiddenWarningText(text);
                         Navigator.pop(ctx);
                         ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(content: Text('提醒文案已更新')),
+                          const SnackBar(duration: Duration(seconds: 1), content: Text('提醒文案已更新')),
                         );
                       },
                       borderRadius: AppThemeRadius.s,
@@ -1384,13 +1384,13 @@ class _ExportDataCard extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('已导出到 $path'),
-          duration: const Duration(seconds: 4),
+          duration: const Duration(seconds: 1),
         ),
       );
     } on PlatformException catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('导出失败:${e.message ?? '未知错误'}')),
+        SnackBar(duration: const Duration(seconds: 1), content: Text('导出失败:${e.message ?? '未知错误'}')),
       );
     }
   }

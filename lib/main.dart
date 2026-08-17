@@ -7,6 +7,12 @@ import 'pages/home_page.dart';
 import 'services/storage_service.dart';
 import 'services/notification_service.dart';
 import 'services/alarm_service.dart';
+import 'services/ai_service.dart';
+
+/// 全局 ScaffoldMessenger key,用于在非 Widget 上下文中弹 SnackBar
+/// (如 AiService 每次调用后上报 token 用量)
+final GlobalKey<ScaffoldMessengerState> globalScaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +26,15 @@ void main() async {
   await NotificationService.init();
   // 初始化闹钟服务
   await AlarmService.init();
+  // 每次 AI API 调用后,通过全局 SnackBar 告知用户本次消耗的 token 值
+  AiService.onUsageReported = (message) {
+    globalScaffoldMessengerKey.currentState?.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  };
   runApp(const DrinkingApp());
 }
 
@@ -33,6 +48,7 @@ class DrinkingApp extends StatelessWidget {
       child: MaterialApp(
         title: '喝水小精灵',
         debugShowCheckedModeBanner: false,
+        scaffoldMessengerKey: globalScaffoldMessengerKey,
         theme: AppTheme.light,
         home: const HomePage(),
       ),
